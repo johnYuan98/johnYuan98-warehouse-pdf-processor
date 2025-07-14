@@ -175,35 +175,41 @@ def is_sku_match(ocr_sku, excel_sku):
     
     # 7. 特殊处理：OPAC系列的常见OCR错误（增强版）
     if 'OPAC' in ocr_norm and 'OPAC' in excel_norm:
-        # 提取完整的OPAC格式
-        ocr_opac_match = re.search(r'048-?OPAC-?(\d+)([A-Z]*)', ocr_norm)
-        excel_opac_match = re.search(r'048-?OPAC-?(\d+)([A-Z]*)', excel_norm)
+        # 提取完整的OPAC格式 - 支持更多变体
+        ocr_opac_match = re.search(r'(048-?)?OPAC-?(\d+)([A-Z]*)', ocr_norm)
+        excel_opac_match = re.search(r'(048-?)?OPAC-?(\d+)([A-Z]*)', excel_norm)
         
         if ocr_opac_match and excel_opac_match:
-            ocr_num = ocr_opac_match.group(1)
-            ocr_suffix = ocr_opac_match.group(2)
-            excel_num = excel_opac_match.group(1)
-            excel_suffix = excel_opac_match.group(2)
+            ocr_num = ocr_opac_match.group(2)
+            ocr_suffix = ocr_opac_match.group(3)
+            excel_num = excel_opac_match.group(2)
+            excel_suffix = excel_opac_match.group(3)
             
-            # 常见数字混淆
-            num_matches = [
-                (ocr_num == '9' and excel_num == '6'),
-                (ocr_num == '6' and excel_num == '9'),
-                (ocr_num == '5' and excel_num == '6'),
-                (ocr_num == '6' and excel_num == '5'),
-                (ocr_num == excel_num)  # 数字相同
-            ]
+            # 数字纠错映射
+            num_corrections = {
+                '9': ['6', '5'],  # 9经常被误识别为6或5
+                '6': ['9', '5'],  # 6经常被误识别为9或5
+                '5': ['6', '9'],  # 5经常被误识别为6或9
+            }
             
-            # 常见后缀混淆（H和其他字母）
-            suffix_matches = [
-                (ocr_suffix == excel_suffix),  # 后缀相同
-                (ocr_suffix == 'H' and excel_suffix == ''),  # OCR多识别了H
-                (ocr_suffix == '' and excel_suffix == 'H'),  # OCR漏识别了H
-                (ocr_suffix == 'B' and excel_suffix == 'H'),  # B和H混淆
-                (ocr_suffix == 'H' and excel_suffix == 'B'),  # H和B混淆
-            ]
+            # 检查数字匹配
+            num_matches = (ocr_num == excel_num or 
+                          excel_num in num_corrections.get(ocr_num, []) or
+                          ocr_num in num_corrections.get(excel_num, []))
             
-            if any(num_matches) and any(suffix_matches):
+            # 后缀纠错
+            suffix_corrections = {
+                'H': ['', 'B', '8'],  # H容易混淆
+                'B': ['H', '8'],      # B和H混淆
+                '': ['H'],            # 可能漏识别H
+            }
+            
+            suffix_matches = (ocr_suffix == excel_suffix or
+                            excel_suffix in suffix_corrections.get(ocr_suffix, []) or
+                            ocr_suffix in suffix_corrections.get(excel_suffix, []))
+            
+            if num_matches and suffix_matches:
+                print(f"🔧 OPAC纠错匹配: {ocr_sku} -> {excel_sku}")
                 return True
     
     # 8. TFO1S系列的常见错误
@@ -502,15 +508,22 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                     found_skus.append(potential_sku)
                                     print(f"✅ 页面{idx+1} 识别SKU: {potential_sku}")
                     
-                    # 选择最佳SKU
+                    # 选择最佳SKU - 优先选择最完整最长的SKU
                     if found_skus:
                         def sku_priority(sku):
-                            has_separator = '-' in sku or '—' in sku
+                            # 1. 优先选择完整的SKU（包含多个破折号的）
+                            dash_count = sku.count('-') + sku.count('—')
+                            # 2. 长度越长越好
                             length = len(sku)
-                            return (not has_separator, -length)
+                            # 3. 避免不完整的SKU（如048-TL）
+                            is_incomplete = (sku.endswith('-TL') or sku.endswith('-HG') or 
+                                           sku.endswith('-OPAC') or len(sku) < 8)
+                            
+                            return (-dash_count, -length, is_incomplete)
                         
                         found_skus.sort(key=sku_priority)
                         best_sku = found_skus[0]
+                        print(f"🎯 页面{idx+1} 最佳SKU选择: {best_sku} (来自{found_skus})")
                         
                         groups["algin_sorted"].append((idx, best_sku, text[:200]))
                         sku_found = True
