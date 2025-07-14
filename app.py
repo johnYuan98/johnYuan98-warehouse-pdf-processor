@@ -333,10 +333,15 @@ def download_file(filename):
     try:
         print(f"📥 下载请求: {filename}", flush=True)
         
-        # 将相对路径转换为绝对路径
-        if not os.path.isabs(filename):
-            # 在当前工作目录中查找文件
-            abs_filename = os.path.abspath(filename)
+        # 处理文件路径
+        if filename.startswith('app/'):
+            # 如果路径以'app/'开头，去掉这个前缀并转为绝对路径
+            clean_filename = filename[4:]  # 去掉'app/'前缀
+            abs_filename = os.path.join(os.getcwd(), clean_filename)
+            print(f"🔄 清理路径前缀，转换为: {abs_filename}", flush=True)
+        elif not os.path.isabs(filename):
+            # 其他相对路径直接在当前工作目录中查找
+            abs_filename = os.path.join(os.getcwd(), filename)
             print(f"🔄 转换为绝对路径: {abs_filename}", flush=True)
         else:
             abs_filename = filename
