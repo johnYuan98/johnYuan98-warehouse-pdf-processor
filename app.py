@@ -103,6 +103,7 @@ def index():
 @app.route('/', methods=['POST'])
 def upload_warehouse():
     """处理仓库分拣功能"""
+    print("🔄 收到仓库分拣请求", flush=True)
     if 'pdf_file' not in request.files:
         flash('No file selected')
         return redirect(url_for('index'))
@@ -121,9 +122,12 @@ def upload_warehouse():
         file.save(filepath)
         
         try:
+            print(f"📁 创建临时目录处理文件: {filename}", flush=True)
             # 使用临时目录
             temp_dir = tempfile.mkdtemp(prefix="warehouse_")
+            print(f"📂 临时目录: {temp_dir}", flush=True)
             results = process_pdf(filepath, temp_dir, mode="warehouse")
+            print(f"✅ 处理完成，生成了 {len(results)} 个文件", flush=True)
             
             # 存储临时文件信息
             session_id = get_session_id()
@@ -145,6 +149,7 @@ def upload_warehouse():
 @app.route('/sort_labels', methods=['POST'])
 def sort_labels():
     """处理ALGIN客户Label排序功能"""
+    print("🔄 收到ALGIN排序请求", flush=True)
     if 'pdf_file' not in request.files:
         flash('No file selected')
         return redirect(url_for('index'))
@@ -163,9 +168,12 @@ def sort_labels():
         file.save(filepath)
         
         try:
+            print(f"📁 创建ALGIN临时目录处理文件: {filename}", flush=True)
             # 使用临时目录
             temp_dir = tempfile.mkdtemp(prefix="algin_")
+            print(f"📂 ALGIN临时目录: {temp_dir}", flush=True)
             results = process_pdf(filepath, temp_dir, mode="algin")
+            print(f"✅ ALGIN处理完成，生成了 {len(results)} 个文件", flush=True)
             
             # 存储临时文件信息
             session_id = get_session_id()
@@ -293,13 +301,18 @@ def clear_results():
 def download_file(filename):
     """下载文件，支持临时文件自动清理"""
     try:
+        print(f"📥 下载请求: {filename}", flush=True)
+        
         # 检查文件是否存在
         if not os.path.exists(filename):
+            print(f"❌ 文件不存在: {filename}", flush=True)
             flash('File not found')
             return redirect(url_for('index'))
         
+        print(f"✅ 开始下载文件: {filename}", flush=True)
         return send_file(filename, as_attachment=True)
     except Exception as e:
+        print(f"❌ 下载错误: {str(e)}", flush=True)
         flash(f'Download error: {str(e)}')
         return redirect(url_for('index'))
 
@@ -311,7 +324,10 @@ def clear_temp_files():
     return jsonify({'success': True, 'message': 'Temporary files cleared'})
 
 if __name__ == '__main__':
+    print("🚀 启动仓库PDF处理系统...", flush=True)
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV') != 'production'
+    print(f"🌐 服务启动在端口: {port}", flush=True)
+    print(f"🔧 调试模式: {debug_mode}", flush=True)
     app.run(host='0.0.0.0', port=port, debug=debug_mode)

@@ -51,12 +51,15 @@ def setup_tesseract():
     return None
 
 # 设置Tesseract命令路径
+import sys
 tesseract_path = setup_tesseract()
 if tesseract_path:
     pytesseract.pytesseract.tesseract_cmd = tesseract_path
-    print(f"✅ Tesseract路径设置为: {tesseract_path}")
+    print(f"✅ Tesseract路径设置为: {tesseract_path}", flush=True)
+    sys.stdout.flush()
 else:
-    print("⚠️ Tesseract未找到，OCR功能不可用，但应用仍可处理文本PDF")
+    print("⚠️ Tesseract未找到，OCR功能不可用，但应用仍可处理文本PDF", flush=True)
+    sys.stdout.flush()
     OCR_AVAILABLE = False
 
 def extract_sku_sort_key(sku_text):
