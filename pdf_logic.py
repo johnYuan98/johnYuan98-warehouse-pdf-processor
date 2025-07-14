@@ -419,6 +419,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             if mode == "algin" and is_unscanned_sku_label(text):
                 sort_key = extract_sort_key_for_unscanned(text)
                 groups["unscanned_sku_labels"].append((idx, sort_key, text[:100]))
+                print(f"📋 识别为总结页面: 页面{idx+1}")
                 continue
             
             # 根据模式决定处理逻辑
@@ -565,9 +566,11 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             if algin_sku_order:
                 for i, excel_sku in enumerate(algin_sku_order):
                     if is_sku_match(sku_string, excel_sku):
+                        print(f"🎯 SKU匹配成功: {sku_string} -> {excel_sku} (位置{i})")
                         return (0, i, sku_string)
                 
                 # 在Excel中没找到，但是有SKU，放在Excel SKU后面
+                print(f"⚠️  SKU未找到匹配: {sku_string}")
                 return (1, sku_string)
             else:
                 # 没有Excel文件，使用智能排序
@@ -576,7 +579,20 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
         return (999, 999)
     
     if mode == "algin":
+        # 调试：显示所有识别到的SKU
+        print(f"🔍 调试 - 识别到的SKU列表:")
+        for i, item in enumerate(groups["algin_sorted"]):
+            sku = item[1] if len(item) > 1 else "未知"
+            print(f"   {i+1}. {sku}")
+        
         groups["algin_sorted"].sort(key=get_algin_sort_key)
+        
+        # 调试：显示排序后的SKU
+        print(f"🔍 调试 - 排序后的SKU列表:")
+        for i, item in enumerate(groups["algin_sorted"]):
+            sku = item[1] if len(item) > 1 else "未知"
+            sort_key = get_algin_sort_key(item)
+            print(f"   {i+1}. {sku} (排序键: {sort_key})")
     
     # 显示处理统计
     print(f"\n📊 处理完成统计:")
@@ -618,14 +634,15 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 else:
                     algin_with_sku.append(item)
             
-            # 输出所有ALGIN页面（有SKU的优先排序，然后是无SKU和未扫描的）
-            all_pages = algin_with_sku + algin_without_sku + algin_unsorted_pages
+            # 输出所有ALGIN页面（有SKU的优先排序，然后是无SKU、未扫描和总结页面）
+            unscanned_summary_pages = groups.get("unscanned_sku_labels", [])
+            all_pages = algin_with_sku + algin_without_sku + algin_unsorted_pages + unscanned_summary_pages
             
             if not all_pages:
                 print(f"❌ 错误: 没有找到任何ALGIN页面！")
                 continue
             
-            print(f"📊 ALGIN页面统计: 有SKU({len(algin_with_sku)}) + 无SKU({len(algin_without_sku)}) + 未扫描({len(algin_unsorted_pages)}) = 总计({len(all_pages)})")
+            print(f"📊 ALGIN页面统计: 有SKU({len(algin_with_sku)}) + 无SKU({len(algin_without_sku)}) + 未扫描({len(algin_unsorted_pages)}) + 总结({len(unscanned_summary_pages)}) = 总计({len(all_pages)})")
                 
             writer = PdfWriter()
             for item in all_pages:
