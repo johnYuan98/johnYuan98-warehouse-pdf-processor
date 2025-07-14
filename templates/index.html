@@ -181,7 +181,7 @@
                             {% for file in output_files %}
                                 <li class="mb-2 d-flex align-items-center justify-content-between">
                                     <div>
-                                        <a href="{{ url_for('download_file', filename=file) }}" class="link-primary text-decoration-none">
+                                        <a href="{{ url_for('download_file', filename=file) }}" class="link-primary text-decoration-none" target="_blank" download>
                                             <i class="fas fa-download me-2"></i>{{ file.split('/')[-1] if '/' in file else file }}
                                         </a>
                                     </div>
@@ -300,7 +300,7 @@
                             </div>
                             <div class="mb-3 d-flex align-items-center justify-content-between">
                                 <div>
-                                    <a href="{{ url_for('download_file', filename=sorted_file) }}" class="link-primary text-decoration-none">
+                                    <a href="{{ url_for('download_file', filename=sorted_file) }}" class="link-primary text-decoration-none" target="_blank" download>
                                         <i class="fas fa-download me-2"></i>{{ sorted_file.split('/')[-1] if '/' in sorted_file else sorted_file }}
                                     </a>
                                 </div>
