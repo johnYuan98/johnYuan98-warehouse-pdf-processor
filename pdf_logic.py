@@ -56,7 +56,7 @@ if tesseract_path:
     pytesseract.pytesseract.tesseract_cmd = tesseract_path
     print(f"✅ Tesseract路径设置为: {tesseract_path}")
 else:
-    print("❌ Tesseract未找到")
+    print("⚠️ Tesseract未找到，OCR功能不可用，但应用仍可处理文本PDF")
     OCR_AVAILABLE = False
 
 def extract_sku_sort_key(sku_text):
