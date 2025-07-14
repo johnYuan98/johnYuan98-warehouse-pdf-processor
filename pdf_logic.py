@@ -393,11 +393,14 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             
             # 根据模式决定处理逻辑
             if mode == "algin":
-                # ALGIN排序模式 - 更准确的识别策略
+                # ALGIN排序模式 - 非常积极的识别策略
+                # 根据用户反馈，几乎所有页面都应该是ALGIN标签页面
                 text_upper = text.upper()
                 
-                # 检查是否明确是仓库标签
-                is_definitely_warehouse = False
+                # 首先检查是否明确不是ALGIN标签（仓库标签等）
+                is_definitely_not_algin = False
+                
+                # 检查仓库模式匹配
                 warehouse_patterns = [
                     r"\b([A-Z]{2})-(\d{3})-([A-Z0-9]+)\b",  # 915格式
                     r"\b([A-Z]{2})-([A-Z]{2})-(\d{2,3})\b"  # 8090/60格式
@@ -405,27 +408,36 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 
                 for pattern in warehouse_patterns:
                     if re.search(pattern, text):
-                        is_definitely_warehouse = True
+                        is_definitely_not_algin = True
                         break
                 
-                # 检查是否包含ALGIN相关特征
-                has_algin_features = (
-                    bool(re.search(r'(ALN|ALGIN|ALIGN)', text_upper)) or
-                    bool(re.search(r'\b(\d{3}-[A-Z]{2,4}-[A-Z0-9-]+)\b', text_upper)) or
-                    bool(re.search(r'\b([A-Z0-9]{3,6}-[A-Z]{2,4})\b', text_upper))
-                )
-                
-                # 只有当不是仓库标签且有ALGIN特征时才认为是ALGIN标签
-                is_algin_label = not is_definitely_warehouse and has_algin_features
+                # 如果不是明确的仓库标签，就假设是ALGIN标签
+                is_algin_label = not is_definitely_not_algin
                 
                 if is_algin_label:
-                    # 简化的ALGIN SKU识别模式，更可靠
+                    # 使用智能SKU识别和排序逻辑 - 扩展模式匹配
                     algin_sku_patterns = [
-                        # 主要ALGIN SKU格式
-                        r'\b(\d{3}-[A-Z]{2,4}-[A-Z0-9-]+)\b',                       # 014-HG-17061-A, 048-OPAC-5等
-                        r'\b([A-Z0-9]{3,6}-[A-Z]{2,4})\b',                          # TFO1S-BK等
-                        r'\b(\d{3}-[A-Z]{2,4}—[A-Z0-9-]+)\b',                       # 048-OPAC—5等（破折号变体）
-                        r'\b([A-Z0-9]{3,6}—[A-Z]{2,4})\b',                          # TFO1S—BK等（破折号变体）
+                        # 标准ALGIN SKU格式
+                        r'\b(\d{3})-([A-Z]{2,4})-([A-Z0-9]+)\b',                    # 048-OPAC-5, 048-TL-W6KWD
+                        r'\b(\d{3})-([A-Z]{2,4})—(\d+)-?([A-Z]*)\b',                # 048-OPAC—5, 014-HG—17061-B  
+                        r'\b([A-Z0-9]{3,5})-([A-Z]{2})\b',                          # TFO1S-BK
+                        r'\b([A-Z0-9]{3,5})—([A-Z]{2})\b',                          # TFO1S—BK
+                        r'\b(\d{3})-([A-Z]{2})—([A-Z0-9]+)\b',                      # 048-TL—W6KWD
+                        
+                        # 014-HG系列格式
+                        r'\b(014)-([A-Z]{2})-(\d{5})-([A-Z]+)\b',                   # 014-HG-17061-A
+                        r'\b(014)-([A-Z]{2})-(\d{5})-([A-Z]{2,3})\b',               # 014-HG-17061-BRO
+                        r'\b(014)-([A-Z]{2})-(\d{5})\b',                            # 014-HG-41023
+                        
+                        # 050系列格式
+                        r'\b(050)-([A-Z]{2,3})-(\d{2,5})-?([A-Z]*)\b',              # 050-HA-50028, 050-LMT-23-GY
+                        
+                        # 060系列格式
+                        r'\b(060)-([A-Z]{3})-(\d{2,3}[A-Z]*)-([A-Z]{2,3})\b',       # 060-ROT-11L-WH, 060-ROT-15V2-DG
+                        
+                        # 通用灵活格式（最后匹配）
+                        r'\b(\d{3})-([A-Z]{2,4})-([A-Z0-9-]+)\b',                   # 通用数字-字母-字母数字格式
+                        r'\b([A-Z0-9]{3,6})-([A-Z0-9]{2,6})\b',                     # 通用字母数字-字母数字格式
                     ]
                     
                     sku_found = False
@@ -436,17 +448,32 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                         matches = re.findall(pattern, text.upper())
                         if matches:
                             for match in matches:
-                                potential_sku = match if isinstance(match, str) else match[0]
+                                if isinstance(match, tuple):
+                                    # 过滤掉空字符串，然后重新组合
+                                    non_empty_parts = [part for part in match if part]
+                                    potential_sku = '-'.join(non_empty_parts)
+                                else:
+                                    potential_sku = match
                                 
-                                # 基本SKU验证
+                                # 更严格的SKU验证
                                 if (len(potential_sku) >= 5 and 
+                                    not re.match(r'^\d{4}$', potential_sku) and
+                                    not potential_sku.startswith('AGD') and
+                                    # 确保包含至少一个字母和一个数字
                                     re.search(r'[A-Z]', potential_sku) and
                                     re.search(r'\d', potential_sku)):
                                     found_skus.append(potential_sku)
                     
-                    # 选择最佳SKU（最长的通常最准确）
+                    # 选择最佳SKU
                     if found_skus:
-                        best_sku = max(found_skus, key=len)
+                        def sku_priority(sku):
+                            has_separator = '-' in sku or '—' in sku
+                            length = len(sku)
+                            return (not has_separator, -length)
+                        
+                        found_skus.sort(key=sku_priority)
+                        best_sku = found_skus[0]
+                        
                         groups["algin_sorted"].append((idx, best_sku, text[:200]))
                         sku_found = True
                     
@@ -561,14 +588,15 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 else:
                     algin_with_sku.append(item)
             
-            # 输出所有ALGIN页面（有SKU的在前，无SKU的在后）
-            all_pages = algin_with_sku + algin_without_sku + algin_unsorted_pages
+            # 只输出有SKU且排序好的ALGIN页面
+            all_pages = algin_with_sku
             
             if not all_pages:
-                print(f"❌ 错误: 没有找到任何ALGIN页面！")
-                continue
-            
-            print(f"📊 ALGIN页面统计: 有SKU({len(algin_with_sku)}) + 无SKU({len(algin_without_sku)}) + 未扫描({len(algin_unsorted_pages)}) = 总计({len(all_pages)})")
+                print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面")
+                all_pages = algin_sorted_pages  # 移除150页限制，输出所有页面
+                if not all_pages:
+                    print(f"❌ 错误: 没有找到任何ALGIN页面！")
+                    continue
                 
             writer = PdfWriter()
             for item in all_pages:
