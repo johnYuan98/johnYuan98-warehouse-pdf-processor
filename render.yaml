@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: warehouse-pdf-processor
+    env: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn --bind 0.0.0.0:$PORT app:app"
+    plan: free
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+    autoDeploy: true

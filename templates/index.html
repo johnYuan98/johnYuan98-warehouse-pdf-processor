@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF 工具集成</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .spinner-border { width: 2rem; height: 2rem; }
+        .upload-area { 
+            border: 2px dashed #0d6efd; 
+            border-radius: 8px; 
+            padding: 2rem; 
+            text-align: center; 
+            background: #f8f9fa; 
+            margin-bottom: 2rem; 
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+        .upload-area:hover {
+            border-color: #0a58ca;
+            background: #e7f3ff;
+        }
+        .upload-area.dragover {
+            border-color: #198754;
+            background: #d1e7dd;
+            border-style: solid;
+        }
+        .upload-area.dragover::before {
+            content: "📎 松开鼠标上传文件";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.2rem;
+            color: #198754;
+            font-weight: bold;
+        }
+        .file-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #e3f2fd;
+            border-radius: 8px;
+            border-left: 4px solid #2196f3;
+            display: none;
+        }
+        .drag-text {
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+        .card {
+            border: none;
+            transition: all 0.3s ease;
+        }
+        .card:hover {
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+        }
+        .card-header {
+            border-bottom: none;
+            padding: 1.5rem;
+        }
+        .card-body {
+            padding: 2rem;
+        }
+        .btn-lg {
+            padding: 0.75rem 2rem;
+            font-size: 1.1rem;
+        }
+        .estimate-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-top: 1rem;
+            display: none;
+        }
+        .estimate-time {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #0d6efd;
+        }
+        .processing-info {
+            background: #fff3cd;
+            border: 1px solid #ffecb5;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body class="container py-5">
+    <div class="text-center mb-5">
+        <h1 class="display-4 fw-bold text-primary">
+            <i class="fas fa-file-pdf me-3"></i>
+            4DS Warehouse Tools
+        </h1>
+        <p class="lead text-muted">4DS ONLY</p>
+    </div>
+    <!-- 功能一：PDF 仓库分拣 -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-boxes me-2"></i>
+                        4DS 915，8090，60仓库分单工具
+                    </h4>
+                    <small class="text-light">自动识别PDF中的仓库标签并按仓库类型分组</small>
+                </div>
+                <div class="card-body">
+                    <form id="logicForm" method="post" enctype="multipart/form-data" action="/">
+                        <div class="upload-area mb-3" id="uploadArea1">
+                            <input type="file" name="pdf_file" accept=".pdf" required class="form-control mb-2" id="fileInput1">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-upload me-2"></i>上传并处理
+                            </button>
+                            <div class="drag-text">或拖拽PDF文件到这里</div>
+                            <div class="file-info" id="fileInfo1">
+                                <strong>已选择文件：</strong><span id="fileName1"></span><br>
+                                <strong>文件大小：</strong><span id="fileSize1"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- 预估时间显示 -->
+                        <div class="estimate-info" id="estimateInfo1">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-clock me-2 text-primary"></i>
+                                <span class="estimate-time" id="estimateTime1">预估时间：计算中...</span>
+                            </div>
+                            <small class="text-muted mt-2 d-block">
+                                <i class="fas fa-info-circle me-1"></i>
+                                预估时间基于文件大小和页数，实际时间可能有所不同
+                            </small>
+                        </div>
+                        
+                        <div id="progressArea1" style="display:none;">
+                            <div class="processing-info">
+                                <div class="p-3">
+                                    <div class="d-flex align-items-center mb-3">
+                                        <i class="fas fa-cog fa-spin text-primary me-2"></i>
+                                        <span class="fs-6">正在处理，请稍候...</span>
+                                    </div>
+                                    
+                                    <!-- 进度条 -->
+                                    <div class="progress mb-3" style="height: 8px;">
+                                        <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated" 
+                                             role="progressbar" 
+                                             id="progressBar1"
+                                             style="width: 0%"
+                                             aria-valuenow="0" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <small class="text-muted">
+                                            <span id="processStatus1">正在分析PDF结构...</span>
+                                        </small>
+                                        <small class="text-muted">
+                                            <span id="progressPercent1">0%</span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    {% if output_files %}
+                        <div class="alert alert-success" id="warehouseResults">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="alert-heading mb-0">
+                                    <i class="fas fa-check-circle me-2"></i>处理结果：
+                                </h5>
+                                <button class="btn btn-sm btn-outline-secondary clear-results-btn" data-target="warehouse">
+                                    <i class="fas fa-refresh me-1"></i>清理并开始新处理
+                                </button>
+                            </div>
+                            <ul class="mb-3">
+                            {% for file in output_files %}
+                                <li class="mb-2 d-flex align-items-center justify-content-between">
+                                    <div>
+                                        <a href="{{ url_for('download_file', filename=file) }}" class="link-primary text-decoration-none">
+                                            <i class="fas fa-download me-2"></i>{{ file.split('/')[-1] if '/' in file else file }}
+                                        </a>
+                                    </div>
+                                    <button class="btn btn-sm btn-outline-primary rename-btn" data-filename="{{ file.split('/')[-1] if '/' in file else file }}" data-type="warehouse">
+                                        <i class="fas fa-edit me-1"></i>重命名
+                                    </button>
+                                </li>
+                            {% endfor %}
+                            </ul>
+                            
+                            <!-- 重命名输入框 -->
+                            <div class="rename-section" id="renameSection1" style="display: none;">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-edit me-2"></i>重命名文件
+                                        </h6>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="newFileName1" placeholder="输入新的文件名（不需要.pdf后缀）">
+                                            <button class="btn btn-primary" id="confirmRename1">
+                                                <i class="fas fa-check me-1"></i>确认
+                                            </button>
+                                            <button class="btn btn-secondary" id="cancelRename1">
+                                                <i class="fas fa-times me-1"></i>取消
+                                            </button>
+                                        </div>
+                                        <small class="form-text text-muted">当前文件：<span id="currentFileName1"></span></small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 功能二：按默认SKU顺序重组PDF -->
+    <div class="row mb-5">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-sort-amount-down me-2"></i>
+                        ALGIN客户的Label排序
+                    </h4>
+                    <small class="text-light">不上传Excel，直接按系统内置SKU顺序重组</small>
+                </div>
+                <div class="card-body">
+                    <form id="sortForm" method="post" enctype="multipart/form-data" action="/sort_labels">
+                        <div class="upload-area mb-3" id="uploadArea2">
+                            <input type="file" name="pdf_file" accept=".pdf" required class="form-control mb-2" id="fileInput2">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="fas fa-sort me-2"></i>上传并重组
+                            </button>
+                            <div class="drag-text">或拖拽PDF文件到这里</div>
+                            <div class="file-info" id="fileInfo2">
+                                <strong>已选择文件：</strong><span id="fileName2"></span><br>
+                                <strong>文件大小：</strong><span id="fileSize2"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- 预估时间显示 -->
+                        <div class="estimate-info" id="estimateInfo2">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-clock me-2 text-success"></i>
+                                <span class="estimate-time" id="estimateTime2" style="color: #198754;">预估时间：计算中...</span>
+                            </div>
+                            <small class="text-muted mt-2 d-block">
+                                <i class="fas fa-info-circle me-1"></i>
+                                预估时间基于文件大小和OCR处理需求，实际时间可能有所不同
+                            </small>
+                        </div>
+                        
+                        <div id="progressArea2" style="display:none;">
+                            <div class="processing-info">
+                                <div class="p-3">
+                                    <div class="d-flex align-items-center mb-3">
+                                        <i class="fas fa-sort fa-spin text-success me-2"></i>
+                                        <span class="fs-6">正在处理，请稍候...</span>
+                                    </div>
+                                    
+                                    <!-- 进度条 -->
+                                    <div class="progress mb-3" style="height: 8px;">
+                                        <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" 
+                                             role="progressbar" 
+                                             id="progressBar2"
+                                             style="width: 0%"
+                                             aria-valuenow="0" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <small class="text-muted">
+                                            <span id="processStatus2">正在使用OCR识别标签...</span>
+                                        </small>
+                                        <small class="text-muted">
+                                            <span id="progressPercent2">0%</span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                    {% if sorted_file %}
+                        <div class="alert alert-success" id="alginResults">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="alert-heading mb-0">
+                                    <i class="fas fa-check-circle me-2"></i>重组结果：
+                                </h5>
+                                <button class="btn btn-sm btn-outline-secondary clear-results-btn" data-target="algin">
+                                    <i class="fas fa-refresh me-1"></i>清理并开始新处理
+                                </button>
+                            </div>
+                            <div class="mb-3 d-flex align-items-center justify-content-between">
+                                <div>
+                                    <a href="{{ url_for('download_file', filename=sorted_file) }}" class="link-primary text-decoration-none">
+                                        <i class="fas fa-download me-2"></i>{{ sorted_file.split('/')[-1] if '/' in sorted_file else sorted_file }}
+                                    </a>
+                                </div>
+                                <button class="btn btn-sm btn-outline-success rename-btn" data-filename="{{ sorted_file.split('/')[-1] if '/' in sorted_file else sorted_file }}" data-type="sorted">
+                                    <i class="fas fa-edit me-1"></i>重命名
+                                </button>
+                            </div>
+                            
+                            <!-- 重命名输入框 -->
+                            <div class="rename-section" id="renameSection2" style="display: none;">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-edit me-2"></i>重命名文件
+                                        </h6>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="newFileName2" placeholder="输入新的文件名（不需要.pdf后缀）">
+                                            <button class="btn btn-success" id="confirmRename2">
+                                                <i class="fas fa-check me-1"></i>确认
+                                            </button>
+                                            <button class="btn btn-secondary" id="cancelRename2">
+                                                <i class="fas fa-times me-1"></i>取消
+                                            </button>
+                                        </div>
+                                        <small class="form-text text-muted">当前文件：<span id="currentFileName2"></span></small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        // 文件拖拽功能
+        function setupDragAndDrop(uploadArea, fileInput, fileInfo, fileName, fileSize) {
+            // 点击上传区域时触发文件选择
+            uploadArea.addEventListener('click', function(e) {
+                if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+                    fileInput.click();
+                }
+            });
+
+            // 防止默认拖拽行为
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            // 拖拽时的视觉反馈
+            ['dragenter', 'dragover'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, highlight, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                uploadArea.addEventListener(eventName, unhighlight, false);
+            });
+
+            function highlight(e) {
+                uploadArea.classList.add('dragover');
+            }
+
+            function unhighlight(e) {
+                uploadArea.classList.remove('dragover');
+            }
+
+            // 处理文件放置
+            uploadArea.addEventListener('drop', handleDrop, false);
+
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                
+                if (files.length > 0) {
+                    const file = files[0];
+                    if (file.type === 'application/pdf') {
+                        // 将文件赋值给input
+                        fileInput.files = files;
+                        showFileInfo(file, fileInfo, fileName, fileSize);
+                        
+                        // 显示预估时间
+                        const uploadAreaId = uploadArea.id;
+                        const isFunction2 = uploadAreaId.includes('2');
+                        const estimateElement = document.getElementById(`estimateInfo${isFunction2 ? '2' : '1'}`);
+                        const timeElement = document.getElementById(`estimateTime${isFunction2 ? '2' : '1'}`);
+                        showEstimateTime(file, estimateElement, timeElement, isFunction2);
+                    } else {
+                        alert('请选择PDF文件');
+                    }
+                }
+            }
+
+            // 文件输入框变化时显示文件信息
+            fileInput.addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    const file = e.target.files[0];
+                    showFileInfo(file, fileInfo, fileName, fileSize);
+                    
+                    // 显示预估时间
+                    const uploadAreaId = uploadArea.id;
+                    const isFunction2 = uploadAreaId.includes('2');
+                    const estimateElement = document.getElementById(`estimateInfo${isFunction2 ? '2' : '1'}`);
+                    const timeElement = document.getElementById(`estimateTime${isFunction2 ? '2' : '1'}`);
+                    showEstimateTime(file, estimateElement, timeElement, isFunction2);
+                }
+            });
+        }
+
+        // 显示文件信息
+        function showFileInfo(file, fileInfo, fileName, fileSize) {
+            const size = (file.size / 1024 / 1024).toFixed(2);
+            fileName.textContent = file.name;
+            fileSize.textContent = size + ' MB';
+            fileInfo.style.display = 'block';
+        }
+
+        // 计算预估时间
+        function calculateEstimateTime(file, isFunction2 = false) {
+            const sizeInMB = file.size / 1024 / 1024;
+            let estimateSeconds;
+            
+            if (isFunction2) {
+                // 功能二：需要OCR处理，时间更长
+                // 基于经验：每MB约需要8-12秒（包含OCR）
+                estimateSeconds = Math.ceil(sizeInMB * 10) + 5; // 基础时间 + 5秒初始化
+            } else {
+                // 功能一：仓库分拣，主要是文本处理
+                // 基于经验：每MB约需要3-5秒
+                estimateSeconds = Math.ceil(sizeInMB * 4) + 2; // 基础时间 + 2秒初始化
+            }
+            
+            // 确保最小时间
+            estimateSeconds = Math.max(estimateSeconds, 5);
+            
+            // 格式化时间显示
+            if (estimateSeconds < 60) {
+                return `${estimateSeconds} 秒`;
+            } else {
+                const minutes = Math.floor(estimateSeconds / 60);
+                const seconds = estimateSeconds % 60;
+                return `${minutes} 分 ${seconds} 秒`;
+            }
+        }
+
+        // 显示预估时间
+        function showEstimateTime(file, estimateElement, timeElement, isFunction2 = false) {
+            const estimateTime = calculateEstimateTime(file, isFunction2);
+            timeElement.textContent = `预估时间：${estimateTime}`;
+            estimateElement.style.display = 'block';
+        }
+
+        // 为两个功能设置拖拽上传
+        setupDragAndDrop(
+            document.getElementById('uploadArea1'),
+            document.getElementById('fileInput1'),
+            document.getElementById('fileInfo1'),
+            document.getElementById('fileName1'),
+            document.getElementById('fileSize1')
+        );
+
+        setupDragAndDrop(
+            document.getElementById('uploadArea2'),
+            document.getElementById('fileInput2'),
+            document.getElementById('fileInfo2'),
+            document.getElementById('fileName2'),
+            document.getElementById('fileSize2')
+        );
+
+        // 优化的重命名功能
+        function setupRenameFeature() {
+            let currentRenamingFile = null;
+            let currentRenameType = null;
+            
+            // 防止重复绑定事件
+            if (window.renameEventsBound) {
+                return;
+            }
+            window.renameEventsBound = true;
+            
+            // 缓存DOM元素
+            const sections = {
+                1: document.getElementById('renameSection1'),
+                2: document.getElementById('renameSection2')
+            };
+            const inputs = {
+                1: document.getElementById('newFileName1'),
+                2: document.getElementById('newFileName2')
+            };
+            const fileSpans = {
+                1: document.getElementById('currentFileName1'),
+                2: document.getElementById('currentFileName2')
+            };
+            
+            // 使用事件委托，但限制查询范围
+            document.addEventListener('click', function(e) {
+                const target = e.target;
+                
+                // 处理重命名按钮点击
+                if (target.classList.contains('rename-btn')) {
+                    e.preventDefault();
+                    handleRenameClick(target);
+                    return;
+                }
+                
+                // 处理确认和取消按钮
+                const buttonId = target.id;
+                if (buttonId.startsWith('confirmRename')) {
+                    e.preventDefault();
+                    const sectionNum = parseInt(buttonId.slice(-1));
+                    confirmRename(sectionNum);
+                } else if (buttonId.startsWith('cancelRename')) {
+                    e.preventDefault();
+                    const sectionNum = parseInt(buttonId.slice(-1));
+                    cancelRename(sectionNum);
+                }
+            });
+            
+            function handleRenameClick(button) {
+                const filename = button.dataset.filename;
+                const type = button.dataset.type;
+                
+                currentRenamingFile = filename;
+                currentRenameType = type;
+                
+                const sectionNum = type === 'warehouse' ? 1 : 2;
+                const section = sections[sectionNum];
+                const input = inputs[sectionNum];
+                const fileSpan = fileSpans[sectionNum];
+                
+                if (section && input && fileSpan) {
+                    // 批量DOM操作
+                    requestAnimationFrame(() => {
+                        section.style.display = 'block';
+                        fileSpan.textContent = filename;
+                        input.value = filename.replace('.pdf', '');
+                        input.focus();
+                        input.select();
+                        
+                        // 隐藏当前按钮即可
+                        button.style.display = 'none';
+                    });
+                }
+            }
+            
+            // 优化的确认重命名函数
+            function confirmRename(sectionNum) {
+                const input = inputs[sectionNum];
+                const newName = input.value.trim();
+                
+                if (!newName) {
+                    input.focus();
+                    return;
+                }
+                
+                // 快速文件名验证
+                if (/[\/\\:*?"<>|]/.test(newName)) {
+                    showToast('文件名不能包含特殊字符：/ \\ : * ? " < > |', 'error');
+                    input.focus();
+                    return;
+                }
+                
+                // 检查文件名长度
+                if (newName.length > 200) {
+                    showToast('文件名过长，请使用较短的名称', 'error');
+                    input.focus();
+                    return;
+                }
+                
+                const confirmBtn = document.getElementById(`confirmRename${sectionNum}`);
+                const originalText = confirmBtn.innerHTML;
+                
+                // 立即禁用按钮防止重复点击
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>处理中...';
+                
+                // 使用fetch发送请求，不阻塞UI
+                fetch('/rename_file', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        old_filename: currentRenamingFile,
+                        new_filename: newName + '.pdf'
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('网络错误');
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        // 使用后端返回的准确路径信息更新DOM
+                        updateFileNameInDOMWithPath(currentRenamingFile, data.new_filename, data.new_path);
+                        cancelRename(sectionNum);
+                        showToast('重命名成功！', 'success');
+                    } else {
+                        throw new Error(data.error || '重命名失败');
+                    }
+                })
+                .catch(error => {
+                    console.error('重命名错误:', error);
+                    showToast('重命名失败：' + error.message, 'error');
+                    // 恢复按钮状态
+                    confirmBtn.innerHTML = originalText;
+                    confirmBtn.disabled = false;
+                });
+            }
+            
+            // 优化的取消重命名函数
+            function cancelRename(sectionNum) {
+                const section = sections[sectionNum];
+                if (section) {
+                    section.style.display = 'none';
+                }
+                
+                // 恢复重命名按钮显示 - 使用当前文件名查找按钮
+                if (currentRenamingFile) {
+                    const renameBtn = document.querySelector(`.rename-btn[data-filename="${currentRenamingFile}"]`);
+                    if (renameBtn) {
+                        renameBtn.style.display = 'inline-block';
+                    }
+                } else {
+                    // 如果没有当前文件名，按类型查找
+                    const targetType = sectionNum === 1 ? 'warehouse' : 'sorted';
+                    const targetBtn = document.querySelector(`.rename-btn[data-type="${targetType}"]`);
+                    if (targetBtn) {
+                        targetBtn.style.display = 'inline-block';
+                    }
+                }
+                
+                // 重置状态但不清空currentRenamingFile，保持可重命名状态
+                currentRenameType = null;
+            }
+            
+            // 使用后端返回的路径信息更新DOM
+            function updateFileNameInDOMWithPath(oldName, newName, newPath) {
+                console.log('Updating file name from:', oldName, 'to:', newName, 'with path:', newPath);
+                
+                // 更新下载链接 - 使用精确的文件名匹配
+                const links = document.querySelectorAll('a');
+                links.forEach(link => {
+                    // 检查链接文本或href是否包含旧文件名
+                    const linkText = link.textContent.trim();
+                    const isTargetLink = linkText.includes(oldName) || link.href.includes(encodeURIComponent(oldName));
+                    
+                    if (isTargetLink) {
+                        // 更新下载链接到新路径
+                        const baseUrl = window.location.origin;
+                        link.href = `${baseUrl}/download/${encodeURIComponent(newPath)}`;
+                        
+                        // 更新显示文本
+                        const icon = link.querySelector('i');
+                        const iconHTML = icon ? icon.outerHTML : '';
+                        link.innerHTML = iconHTML + newName;
+                        
+                        console.log('Updated link href to:', link.href);
+                    }
+                });
+                
+                // 查找并更新重命名按钮 - 使用更灵活的选择器
+                let renameBtn = document.querySelector(`.rename-btn[data-filename="${oldName}"]`);
+                
+                // 如果没找到，尝试查找隐藏的按钮
+                if (!renameBtn) {
+                    const allRenameButtons = document.querySelectorAll('.rename-btn');
+                    for (let btn of allRenameButtons) {
+                        if (btn.getAttribute('data-filename') === oldName || btn.style.display === 'none') {
+                            renameBtn = btn;
+                            break;
+                        }
+                    }
+                }
+                
+                if (renameBtn) {
+                    renameBtn.setAttribute('data-filename', newName);
+                    renameBtn.style.display = 'inline-block';
+                    console.log('Updated rename button data-filename to:', newName);
+                } else {
+                    console.warn('Rename button not found for:', oldName);
+                }
+                
+                // 更新全局变量以便下次重命名
+                currentRenamingFile = newName;
+            }
+            
+            // 保留旧函数作为后备
+            function updateFileNameInDOM(oldName, newName) {
+                updateFileNameInDOMWithPath(oldName, newName, newName);
+            }
+            
+            // 轻量级提示消息
+            function showToast(message, type = 'info') {
+                const toast = document.createElement('div');
+                toast.className = `alert alert-${type === 'error' ? 'danger' : 'success'} position-fixed`;
+                toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 250px;';
+                toast.innerHTML = `<i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'check-circle'} me-2"></i>${message}`;
+                
+                document.body.appendChild(toast);
+                
+                // 3秒后自动消失
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 3000);
+            }
+            
+            // 支持回车键确认重命名
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && e.target.id.startsWith('newFileName')) {
+                    const sectionNum = parseInt(e.target.id.slice(-1));
+                    confirmRename(sectionNum);
+                } else if (e.key === 'Escape') {
+                    // ESC键取消重命名
+                    if (currentRenamingFile) {
+                        const sectionNum = currentRenameType === 'warehouse' ? 1 : 2;
+                        cancelRename(sectionNum);
+                    }
+                }
+            });
+        }
+
+        // 初始化重命名功能
+        setupRenameFeature();
+
+        // 更新处理状态和进度条
+        function updateProcessStatus(statusElement, messages, progressBarId, progressPercentId, interval = 2000) {
+            let currentIndex = 0;
+            const progressBar = document.getElementById(progressBarId);
+            const progressPercent = document.getElementById(progressPercentId);
+            
+            const statusInterval = setInterval(() => {
+                if (currentIndex < messages.length) {
+                    // 更新状态文本
+                    statusElement.textContent = messages[currentIndex];
+                    
+                    // 计算进度百分比
+                    const progressValue = Math.round(((currentIndex + 1) / messages.length) * 100);
+                    
+                    // 更新进度条
+                    progressBar.style.width = progressValue + '%';
+                    progressBar.setAttribute('aria-valuenow', progressValue);
+                    progressPercent.textContent = progressValue + '%';
+                    
+                    currentIndex++;
+                } else {
+                    // 处理完成，设置为100%
+                    progressBar.style.width = '100%';
+                    progressBar.setAttribute('aria-valuenow', 100);
+                    progressPercent.textContent = '100%';
+                    clearInterval(statusInterval);
+                }
+            }, interval);
+            return statusInterval;
+        }
+
+        // 表单提交处理
+        document.getElementById('logicForm').addEventListener('submit', function(e) {
+            const fileInput = document.getElementById('fileInput1');
+            if (!fileInput.files.length) {
+                e.preventDefault();
+                alert('请选择PDF文件');
+                return;
+            }
+            
+            // 显示处理进度
+            document.getElementById('progressArea1').style.display = 'block';
+            
+            // 重置进度条
+            const progressBar1 = document.getElementById('progressBar1');
+            const progressPercent1 = document.getElementById('progressPercent1');
+            progressBar1.style.width = '0%';
+            progressBar1.setAttribute('aria-valuenow', 0);
+            progressPercent1.textContent = '0%';
+            
+            // 更新处理状态和进度条
+            const statusElement = document.getElementById('processStatus1');
+            const messages = [
+                '正在分析PDF结构...',
+                '正在提取仓库标签...',
+                '正在按类型分组...',
+                '正在生成输出文件...',
+                '即将完成处理...'
+            ];
+            updateProcessStatus(statusElement, messages, 'progressBar1', 'progressPercent1', 1500);
+        });
+
+        document.getElementById('sortForm').addEventListener('submit', function(e) {
+            const fileInput = document.getElementById('fileInput2');
+            if (!fileInput.files.length) {
+                e.preventDefault();
+                alert('请选择PDF文件');
+                return;
+            }
+            
+            // 显示处理进度
+            document.getElementById('progressArea2').style.display = 'block';
+            
+            // 重置进度条
+            const progressBar2 = document.getElementById('progressBar2');
+            const progressPercent2 = document.getElementById('progressPercent2');
+            progressBar2.style.width = '0%';
+            progressBar2.setAttribute('aria-valuenow', 0);
+            progressPercent2.textContent = '0%';
+            
+            // 更新处理状态和进度条
+            const statusElement = document.getElementById('processStatus2');
+            const messages = [
+                '正在使用OCR识别标签...',
+                '正在提取SKU信息...',
+                '正在查找匹配的SKU...',
+                '正在按顺序重新排列...',
+                '正在生成排序后的PDF...',
+                '即将完成处理...'
+            ];
+            updateProcessStatus(statusElement, messages, 'progressBar2', 'progressPercent2', 1800);
+        });
+
+        // 清除结果功能
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('clear-results-btn') || e.target.closest('.clear-results-btn')) {
+                e.preventDefault();
+                const btn = e.target.classList.contains('clear-results-btn') ? e.target : e.target.closest('.clear-results-btn');
+                const target = btn.dataset.target;
+                
+                // 确认清除
+                if (confirm('确定要清理临时文件并开始新的处理吗？\n注意：这将删除所有未下载的处理结果文件。')) {
+                    // 调用后端清理临时文件
+                    fetch('/clear_temp_files', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // 隐藏对应的结果区域
+                            if (target === 'warehouse') {
+                                const warehouseResults = document.getElementById('warehouseResults');
+                                if (warehouseResults) {
+                                    warehouseResults.style.display = 'none';
+                                }
+                            } else if (target === 'algin') {
+                                const alginResults = document.getElementById('alginResults');
+                                if (alginResults) {
+                                    alginResults.style.display = 'none';
+                                }
+                            }
+                            
+                            showToast('临时文件已清理，可以开始新的处理', 'success');
+                        } else {
+                            showToast('清理失败，请重试', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('清理错误:', error);
+                        showToast('清理失败：' + error.message, 'error');
+                    });
+                }
+            }
+        });
+
+        // 改进重命名按钮的显示逻辑
+        function ensureRenameButtonsVisible() {
+            // 确保所有重命名按钮都可见
+            document.querySelectorAll('.rename-btn').forEach(btn => {
+                if (btn.style.display === 'none') {
+                    btn.style.display = 'inline-block';
+                }
+            });
+        }
+
+        // 页面加载完成后确保重命名按钮可见
+        document.addEventListener('DOMContentLoaded', function() {
+            ensureRenameButtonsVisible();
+        });
+    </script>
+</body>
+</html> 
