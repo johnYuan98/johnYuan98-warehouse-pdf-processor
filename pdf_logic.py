@@ -119,23 +119,33 @@ def is_sku_match(ocr_sku, excel_sku):
     if ocr_norm == excel_norm:
         return True
     
-    # 3. 处理OCR常见错误
-    ocr_corrections = {
-        '0': 'O', 'O': '0',  # 数字0和字母O
-        '1': 'I', 'I': '1',  # 数字1和字母I
-        '5': 'S', 'S': '5',  # 数字5和字母S
-        '8': 'B', 'B': '8',  # 数字8和字母B
-        '9': '6', '6': '9',  # 常见的9和6混淆
-        'G': '6', '6': 'G',  # G和6混淆
-    }
+    # 3. 处理OCR常见错误 - 增强版本
+    # 首先尝试多种常见的OCR错误纠正
+    correction_pairs = [
+        ('9', '6'), ('6', '9'),  # 6和9混淆
+        ('0', 'O'), ('O', '0'),  # 0和O混淆
+        ('1', 'I'), ('I', '1'),  # 1和I混淆
+        ('5', 'S'), ('S', '5'),  # 5和S混淆
+        ('8', 'B'), ('B', '8'),  # 8和B混淆
+        ('G', '6'), ('6', 'G'),  # G和6混淆
+        ('D', 'B'), ('B', 'D'),  # D和B混淆
+        ('Q', 'O'), ('O', 'Q'),  # Q和O混淆
+        ('Z', '2'), ('2', 'Z'),  # Z和2混淆
+    ]
     
-    # 生成OCR纠错版本
-    ocr_corrected = ocr_norm
-    for wrong, correct in ocr_corrections.items():
-        ocr_corrected = ocr_corrected.replace(wrong, correct)
-    
-    if ocr_corrected == excel_norm:
-        return True
+    # 尝试不同的纠错组合
+    for wrong, correct in correction_pairs:
+        ocr_corrected = ocr_norm.replace(wrong, correct)
+        if ocr_corrected == excel_norm:
+            return True
+        
+        # 也尝试多重替换
+        ocr_multi = ocr_corrected
+        for w2, c2 in correction_pairs:
+            if w2 != wrong:  # 避免重复替换
+                ocr_multi = ocr_multi.replace(w2, c2)
+                if ocr_multi == excel_norm:
+                    return True
     
     # 4. 核心部分匹配（去除特殊字符）
     def extract_core_sku(sku):
@@ -163,17 +173,37 @@ def is_sku_match(ocr_sku, excel_sku):
             if abs(len(ocr_norm) - len(excel_norm)) <= 2:
                 return True
     
-    # 7. 特殊处理：OPAC系列的常见OCR错误
+    # 7. 特殊处理：OPAC系列的常见OCR错误（增强版）
     if 'OPAC' in ocr_norm and 'OPAC' in excel_norm:
-        # 提取数字部分
-        ocr_opac_num = re.search(r'OPAC-?(\d+)', ocr_norm)
-        excel_opac_num = re.search(r'OPAC-?(\d+)', excel_norm)
-        if ocr_opac_num and excel_opac_num:
-            ocr_num = ocr_opac_num.group(1)
-            excel_num = excel_opac_num.group(1)
-            # 允许5和9的混淆，6和9的混淆等
-            if (ocr_num == '9' and excel_num == '5') or (ocr_num == '5' and excel_num == '9') or \
-               (ocr_num == '6' and excel_num == '9') or (ocr_num == '9' and excel_num == '6'):
+        # 提取完整的OPAC格式
+        ocr_opac_match = re.search(r'048-?OPAC-?(\d+)([A-Z]*)', ocr_norm)
+        excel_opac_match = re.search(r'048-?OPAC-?(\d+)([A-Z]*)', excel_norm)
+        
+        if ocr_opac_match and excel_opac_match:
+            ocr_num = ocr_opac_match.group(1)
+            ocr_suffix = ocr_opac_match.group(2)
+            excel_num = excel_opac_match.group(1)
+            excel_suffix = excel_opac_match.group(2)
+            
+            # 常见数字混淆
+            num_matches = [
+                (ocr_num == '9' and excel_num == '6'),
+                (ocr_num == '6' and excel_num == '9'),
+                (ocr_num == '5' and excel_num == '6'),
+                (ocr_num == '6' and excel_num == '5'),
+                (ocr_num == excel_num)  # 数字相同
+            ]
+            
+            # 常见后缀混淆（H和其他字母）
+            suffix_matches = [
+                (ocr_suffix == excel_suffix),  # 后缀相同
+                (ocr_suffix == 'H' and excel_suffix == ''),  # OCR多识别了H
+                (ocr_suffix == '' and excel_suffix == 'H'),  # OCR漏识别了H
+                (ocr_suffix == 'B' and excel_suffix == 'H'),  # B和H混淆
+                (ocr_suffix == 'H' and excel_suffix == 'B'),  # H和B混淆
+            ]
+            
+            if any(num_matches) and any(suffix_matches):
                 return True
     
     # 8. TFO1S系列的常见错误
@@ -588,15 +618,14 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 else:
                     algin_with_sku.append(item)
             
-            # 只输出有SKU且排序好的ALGIN页面
-            all_pages = algin_with_sku
+            # 输出所有ALGIN页面（有SKU的优先排序，然后是无SKU和未扫描的）
+            all_pages = algin_with_sku + algin_without_sku + algin_unsorted_pages
             
             if not all_pages:
-                print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面")
-                all_pages = algin_sorted_pages  # 移除150页限制，输出所有页面
-                if not all_pages:
-                    print(f"❌ 错误: 没有找到任何ALGIN页面！")
-                    continue
+                print(f"❌ 错误: 没有找到任何ALGIN页面！")
+                continue
+            
+            print(f"📊 ALGIN页面统计: 有SKU({len(algin_with_sku)}) + 无SKU({len(algin_without_sku)}) + 未扫描({len(algin_unsorted_pages)}) = 总计({len(all_pages)})")
                 
             writer = PdfWriter()
             for item in all_pages:
