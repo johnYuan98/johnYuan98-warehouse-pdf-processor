@@ -381,13 +381,23 @@ def download_file(filename):
         filename = os.path.basename(abs_filename)
         print(f"📝 下载文件名: {filename}", flush=True)
         
-        # 发送文件，添加更多下载参数
-        return send_file(
+        # 发送文件，添加强制下载头
+        response = send_file(
             abs_filename, 
             as_attachment=True,
             download_name=filename,
             mimetype='application/pdf'
         )
+        
+        # 添加强制下载的响应头
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        
+        print(f"🔄 设置响应头: Content-Disposition=attachment; filename=\"{filename}\"", flush=True)
+        return response
     except Exception as e:
         print(f"❌ 下载错误: {str(e)}", flush=True)
         flash(f'Download error: {str(e)}')
@@ -399,6 +409,63 @@ def clear_temp_files():
     session_id = get_session_id()
     cleanup_temp_files(session_id)
     return jsonify({'success': True, 'message': 'Temporary files cleared'})
+
+@app.route('/force_download/<path:filename>')
+def force_download_file(filename):
+    """强制下载文件的备选路由"""
+    try:
+        print(f"🔥 强制下载请求: {filename}", flush=True)
+        
+        # 处理文件路径
+        if filename.startswith('app/'):
+            clean_filename = filename[4:]
+            abs_filename = os.path.join(os.getcwd(), clean_filename)
+        elif not os.path.isabs(filename):
+            abs_filename = os.path.join(os.getcwd(), filename)
+        else:
+            abs_filename = filename
+            
+        print(f"🔥 强制下载路径: {abs_filename}", flush=True)
+        
+        if not os.path.exists(abs_filename):
+            # 搜索临时文件
+            import glob
+            temp_files = glob.glob(f"{os.getcwd()}/temp_output/*/*.pdf")
+            target_filename = os.path.basename(filename)
+            matching_files = [f for f in temp_files if os.path.basename(f) == target_filename]
+            
+            if matching_files:
+                abs_filename = matching_files[0]
+                print(f"🔥 找到文件: {abs_filename}", flush=True)
+            else:
+                return "File not found", 404
+        
+        # 读取文件内容并直接返回
+        with open(abs_filename, 'rb') as f:
+            file_data = f.read()
+        
+        from flask import Response
+        filename_only = os.path.basename(abs_filename)
+        
+        response = Response(
+            file_data,
+            mimetype='application/pdf',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename_only}"',
+                'Content-Type': 'application/pdf',
+                'Content-Length': str(len(file_data)),
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
+        )
+        
+        print(f"🔥 强制下载响应已创建: {filename_only}", flush=True)
+        return response
+        
+    except Exception as e:
+        print(f"🔥 强制下载错误: {str(e)}", flush=True)
+        return f"Download error: {str(e)}", 500
 
 if __name__ == '__main__':
     print("🚀 启动仓库PDF处理系统...", flush=True)
