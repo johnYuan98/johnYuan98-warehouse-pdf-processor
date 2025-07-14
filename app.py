@@ -303,14 +303,29 @@ def download_file(filename):
     try:
         print(f"📥 下载请求: {filename}", flush=True)
         
+        # 将相对路径转换为绝对路径
+        if not os.path.isabs(filename):
+            # 在当前工作目录中查找文件
+            abs_filename = os.path.abspath(filename)
+            print(f"🔄 转换为绝对路径: {abs_filename}", flush=True)
+        else:
+            abs_filename = filename
+        
         # 检查文件是否存在
-        if not os.path.exists(filename):
-            print(f"❌ 文件不存在: {filename}", flush=True)
+        if not os.path.exists(abs_filename):
+            print(f"❌ 文件不存在: {abs_filename}", flush=True)
+            print(f"📂 当前工作目录: {os.getcwd()}", flush=True)
+            
+            # 尝试在临时目录中查找
+            import glob
+            temp_files = glob.glob(f"/tmp/*/ALGIN_Label_已排序.pdf") + glob.glob(f"/tmp/*/915_Sorted.pdf") + glob.glob(f"/tmp/*/*.pdf")
+            print(f"🔍 找到的临时文件: {temp_files}", flush=True)
+            
             flash('File not found')
             return redirect(url_for('index'))
         
-        print(f"✅ 开始下载文件: {filename}", flush=True)
-        return send_file(filename, as_attachment=True)
+        print(f"✅ 开始下载文件: {abs_filename}", flush=True)
+        return send_file(abs_filename, as_attachment=True)
     except Exception as e:
         print(f"❌ 下载错误: {str(e)}", flush=True)
         flash(f'Download error: {str(e)}')
@@ -325,6 +340,7 @@ def clear_temp_files():
 
 if __name__ == '__main__':
     print("🚀 启动仓库PDF处理系统...", flush=True)
+    print(f"📂 当前工作目录: {os.getcwd()}", flush=True)
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV') != 'production'

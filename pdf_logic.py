@@ -601,6 +601,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 writer.write(f)
             outputs.append(output_path)
             print(f"✅ 生成文件: {output_name} ({len(all_pages)} 页)")
+            print(f"📁 文件完整路径: {output_path}", flush=True)
             continue
             
         pages = groups[warehouse]
