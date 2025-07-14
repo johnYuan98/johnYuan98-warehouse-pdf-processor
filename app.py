@@ -147,9 +147,8 @@ def upload_warehouse():
         try:
             print(f"📁 创建临时目录处理文件: {filename}", flush=True)
             # 使用应用内的输出目录，更可靠
-            import time
-            timestamp = int(time.time())
-            temp_dir = os.path.join(os.getcwd(), 'temp_output', f"warehouse_{timestamp}")
+            new_timestamp = int(time.time())
+            temp_dir = os.path.join(os.getcwd(), 'temp_output', f"warehouse_{new_timestamp}")
             os.makedirs(temp_dir, exist_ok=True)
             print(f"📂 临时目录: {temp_dir}", flush=True)
             results = process_pdf(filepath, temp_dir, mode="warehouse")
@@ -196,9 +195,8 @@ def sort_labels():
         try:
             print(f"📁 创建ALGIN临时目录处理文件: {filename}", flush=True)
             # 使用应用内的输出目录，更可靠
-            import time
-            timestamp = int(time.time())
-            temp_dir = os.path.join(os.getcwd(), 'temp_output', f"algin_{timestamp}")
+            new_timestamp = int(time.time())
+            temp_dir = os.path.join(os.getcwd(), 'temp_output', f"algin_{new_timestamp}")
             os.makedirs(temp_dir, exist_ok=True)
             print(f"📂 ALGIN临时目录: {temp_dir}", flush=True)
             results = process_pdf(filepath, temp_dir, mode="algin")
