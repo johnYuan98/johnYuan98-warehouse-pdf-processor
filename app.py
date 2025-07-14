@@ -12,6 +12,9 @@ from pdf_logic import process_pdf
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
 
+# Fix for time variable conflict issue - version 2
+print("🔧 Starting warehouse PDF processor with time conflict fix v2", flush=True)
+
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf'}
 
