@@ -486,14 +486,21 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                 else:
                                     potential_sku = match
                                 
-                                # 更严格的SKU验证
+                                # 更严格的SKU验证 - 只允许ALGIN相关的SKU
                                 if (len(potential_sku) >= 5 and 
                                     not re.match(r'^\d{4}$', potential_sku) and
                                     not potential_sku.startswith('AGD') and
+                                    not potential_sku.startswith('DWT') and
+                                    not potential_sku.startswith('NY') and
+                                    not potential_sku.startswith('MA') and
+                                    # 只允许ALGIN相关的SKU格式
+                                    (potential_sku.startswith(('014-', '048-', '050-', '060-', 'TFO1S')) or
+                                     potential_sku.startswith('OPAC')) and
                                     # 确保包含至少一个字母和一个数字
                                     re.search(r'[A-Z]', potential_sku) and
                                     re.search(r'\d', potential_sku)):
                                     found_skus.append(potential_sku)
+                                    print(f"✅ 页面{idx+1} 识别SKU: {potential_sku}")
                     
                     # 选择最佳SKU
                     if found_skus:
