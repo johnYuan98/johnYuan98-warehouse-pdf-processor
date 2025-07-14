@@ -21,7 +21,43 @@ WAREHOUSE_PREFIXES = {
     "60": ["GA", "GB", "GC"]
 }
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+import platform
+import shutil
+
+# 动态检测Tesseract路径
+def setup_tesseract():
+    if platform.system() == "Windows":
+        tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        if os.path.exists(tesseract_cmd):
+            return tesseract_cmd
+    
+    # Linux/Unix系统（包括Render）
+    tesseract_cmd = shutil.which('tesseract')
+    if tesseract_cmd:
+        return tesseract_cmd
+    
+    # 尝试常见路径
+    common_paths = [
+        '/usr/bin/tesseract',
+        '/usr/local/bin/tesseract',
+        '/opt/homebrew/bin/tesseract'
+    ]
+    
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+    
+    print("⚠️ 警告: 未找到Tesseract，OCR功能可能不可用")
+    return None
+
+# 设置Tesseract命令路径
+tesseract_path = setup_tesseract()
+if tesseract_path:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_path
+    print(f"✅ Tesseract路径设置为: {tesseract_path}")
+else:
+    print("❌ Tesseract未找到")
+    OCR_AVAILABLE = False
 
 def extract_sku_sort_key(sku_text):
     """从SKU文本中提取排序键，实现智能排序逻辑"""
