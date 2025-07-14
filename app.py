@@ -389,14 +389,18 @@ def download_file(filename):
             mimetype='application/pdf'
         )
         
+        # 处理中文文件名的编码问题
+        import urllib.parse
+        encoded_filename = urllib.parse.quote(filename, safe='')
+        
         # 添加强制下载的响应头
-        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response.headers['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{encoded_filename}'
         response.headers['Content-Type'] = 'application/pdf'
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
         
-        print(f"🔄 设置响应头: Content-Disposition=attachment; filename=\"{filename}\"", flush=True)
+        print(f"🔄 设置响应头: Content-Disposition=attachment; filename*=UTF-8''{encoded_filename}", flush=True)
         return response
     except Exception as e:
         print(f"❌ 下载错误: {str(e)}", flush=True)
@@ -445,13 +449,15 @@ def force_download_file(filename):
             file_data = f.read()
         
         from flask import Response
+        import urllib.parse
         filename_only = os.path.basename(abs_filename)
+        encoded_filename = urllib.parse.quote(filename_only, safe='')
         
         response = Response(
             file_data,
             mimetype='application/pdf',
             headers={
-                'Content-Disposition': f'attachment; filename="{filename_only}"',
+                'Content-Disposition': f'attachment; filename*=UTF-8\'\'{encoded_filename}',
                 'Content-Type': 'application/pdf',
                 'Content-Length': str(len(file_data)),
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
