@@ -318,11 +318,23 @@ def download_file(filename):
             
             # 尝试在临时目录中查找
             import glob
-            temp_files = glob.glob(f"/tmp/*/ALGIN_Label_已排序.pdf") + glob.glob(f"/tmp/*/915_Sorted.pdf") + glob.glob(f"/tmp/*/*.pdf")
+            temp_files = glob.glob(f"/tmp/*/*.pdf")
             print(f"🔍 找到的临时文件: {temp_files}", flush=True)
             
-            flash('File not found')
-            return redirect(url_for('index'))
+            # 查找匹配的文件
+            target_filename = os.path.basename(filename)
+            print(f"🎯 查找目标文件名: {target_filename}", flush=True)
+            
+            matching_files = [f for f in temp_files if os.path.basename(f) == target_filename]
+            print(f"✅ 匹配的文件: {matching_files}", flush=True)
+            
+            if matching_files:
+                # 使用找到的第一个匹配文件
+                abs_filename = matching_files[0]
+                print(f"🔄 使用找到的文件: {abs_filename}", flush=True)
+            else:
+                flash('File not found')
+                return redirect(url_for('index'))
         
         print(f"✅ 开始下载文件: {abs_filename}", flush=True)
         return send_file(abs_filename, as_attachment=True)
