@@ -164,8 +164,18 @@ def upload_warehouse():
             # 计划清理（1小时后）
             schedule_cleanup(session_id, TEMP_CLEANUP_DELAY)
             
+            # 转换绝对路径为相对路径用于下载链接
+            relative_results = []
+            cwd = os.getcwd()
+            for result in results:
+                if result.startswith(cwd):
+                    relative_path = os.path.relpath(result, cwd)
+                    relative_results.append(relative_path)
+                else:
+                    relative_results.append(result)
+            
             flash(f'Successfully processed! Generated {len(results)} files.')
-            return render_template('index.html', output_files=results)
+            return render_template('index.html', output_files=relative_results)
             
         except Exception as e:
             flash(f'Error processing file: {str(e)}')
@@ -214,6 +224,12 @@ def sort_labels():
             
             # 对于ALGIN排序，我们只返回第一个结果作为sorted_file
             sorted_file = results[0] if results else None
+            
+            # 转换绝对路径为相对路径用于下载链接
+            if sorted_file:
+                cwd = os.getcwd()
+                if sorted_file.startswith(cwd):
+                    sorted_file = os.path.relpath(sorted_file, cwd)
             
             flash(f'Successfully processed! Generated {len(results)} files.')
             return render_template('index.html', sorted_file=sorted_file)
@@ -333,18 +349,15 @@ def download_file(filename):
     try:
         print(f"📥 下载请求: {filename}", flush=True)
         
-        # 处理文件路径
-        if filename.startswith('app/'):
-            # 如果路径以'app/'开头，去掉这个前缀并转为绝对路径
-            clean_filename = filename[4:]  # 去掉'app/'前缀
-            abs_filename = os.path.join(os.getcwd(), clean_filename)
-            print(f"🔄 清理路径前缀，转换为: {abs_filename}", flush=True)
-        elif not os.path.isabs(filename):
-            # 其他相对路径直接在当前工作目录中查找
+        # 处理文件路径 - 统一处理相对路径
+        if not os.path.isabs(filename):
+            # 相对路径直接在当前工作目录中查找
             abs_filename = os.path.join(os.getcwd(), filename)
-            print(f"🔄 转换为绝对路径: {abs_filename}", flush=True)
+            print(f"🔄 相对路径转绝对路径: {abs_filename}", flush=True)
         else:
+            # 绝对路径直接使用
             abs_filename = filename
+            print(f"🔄 使用绝对路径: {abs_filename}", flush=True)
         
         # 检查文件是否存在
         if not os.path.exists(abs_filename):
@@ -420,13 +433,12 @@ def force_download_file(filename):
     try:
         print(f"🔥 强制下载请求: {filename}", flush=True)
         
-        # 处理文件路径
-        if filename.startswith('app/'):
-            clean_filename = filename[4:]
-            abs_filename = os.path.join(os.getcwd(), clean_filename)
-        elif not os.path.isabs(filename):
+        # 处理文件路径 - 统一处理相对路径
+        if not os.path.isabs(filename):
+            # 相对路径直接在当前工作目录中查找
             abs_filename = os.path.join(os.getcwd(), filename)
         else:
+            # 绝对路径直接使用
             abs_filename = filename
             
         print(f"🔥 强制下载路径: {abs_filename}", flush=True)
