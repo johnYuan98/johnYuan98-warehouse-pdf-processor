@@ -376,7 +376,18 @@ def download_file(filename):
                 return redirect(url_for('index'))
         
         print(f"✅ 开始下载文件: {abs_filename}", flush=True)
-        return send_file(abs_filename, as_attachment=True)
+        
+        # 获取文件名
+        filename = os.path.basename(abs_filename)
+        print(f"📝 下载文件名: {filename}", flush=True)
+        
+        # 发送文件，添加更多下载参数
+        return send_file(
+            abs_filename, 
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/pdf'
+        )
     except Exception as e:
         print(f"❌ 下载错误: {str(e)}", flush=True)
         flash(f'Download error: {str(e)}')
