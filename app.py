@@ -62,6 +62,29 @@ def store_temp_files(session_id, file_paths):
         'files': file_paths,
         'timestamp': time.time()
     }
+    
+    # 清理旧的temp_output目录
+    cleanup_old_temp_dirs()
+
+def cleanup_old_temp_dirs():
+    """清理超过2小时的临时输出目录"""
+    try:
+        temp_output_dir = os.path.join(os.getcwd(), 'temp_output')
+        if not os.path.exists(temp_output_dir):
+            return
+            
+        current_time = time.time()
+        for item in os.listdir(temp_output_dir):
+            item_path = os.path.join(temp_output_dir, item)
+            if os.path.isdir(item_path):
+                # 检查目录创建时间
+                dir_time = os.path.getctime(item_path)
+                if current_time - dir_time > 7200:  # 2小时 = 7200秒
+                    import shutil
+                    shutil.rmtree(item_path)
+                    print(f"🗑️ 清理过期目录: {item_path}", flush=True)
+    except Exception as e:
+        print(f"⚠️ 清理临时目录失败: {str(e)}", flush=True)
 
 def get_recent_results():
     """获取当前session的处理结果"""
@@ -123,8 +146,11 @@ def upload_warehouse():
         
         try:
             print(f"📁 创建临时目录处理文件: {filename}", flush=True)
-            # 使用临时目录
-            temp_dir = tempfile.mkdtemp(prefix="warehouse_")
+            # 使用应用内的输出目录，更可靠
+            import time
+            timestamp = int(time.time())
+            temp_dir = os.path.join(os.getcwd(), 'temp_output', f"warehouse_{timestamp}")
+            os.makedirs(temp_dir, exist_ok=True)
             print(f"📂 临时目录: {temp_dir}", flush=True)
             results = process_pdf(filepath, temp_dir, mode="warehouse")
             print(f"✅ 处理完成，生成了 {len(results)} 个文件", flush=True)
@@ -169,8 +195,11 @@ def sort_labels():
         
         try:
             print(f"📁 创建ALGIN临时目录处理文件: {filename}", flush=True)
-            # 使用临时目录
-            temp_dir = tempfile.mkdtemp(prefix="algin_")
+            # 使用应用内的输出目录，更可靠
+            import time
+            timestamp = int(time.time())
+            temp_dir = os.path.join(os.getcwd(), 'temp_output', f"algin_{timestamp}")
+            os.makedirs(temp_dir, exist_ok=True)
             print(f"📂 ALGIN临时目录: {temp_dir}", flush=True)
             results = process_pdf(filepath, temp_dir, mode="algin")
             print(f"✅ ALGIN处理完成，生成了 {len(results)} 个文件", flush=True)
@@ -318,7 +347,11 @@ def download_file(filename):
             
             # 尝试在临时目录中查找
             import glob
-            temp_files = glob.glob(f"/tmp/*/*.pdf")
+            # 搜索应用内的temp_output目录和系统/tmp目录
+            temp_files = (
+                glob.glob(f"{os.getcwd()}/temp_output/*/*.pdf") + 
+                glob.glob(f"/tmp/*/*.pdf")
+            )
             print(f"🔍 找到的临时文件: {temp_files}", flush=True)
             
             # 查找匹配的文件
