@@ -40,7 +40,37 @@ def is_sku_match_improved(ocr_sku, excel_sku):
                 if prefixed_ocr == excel_norm:
                     return True
     
-    # 3. 处理OCR常见错误 - ALGIN专用增强版本
+    # 3. OPAC系列的精确匹配（优先于通用OCR纠错）
+    if 'OPAC' in ocr_norm and 'OPAC' in excel_norm:
+        # 提取OPAC后的数字和字母
+        ocr_opac = re.search(r'OPAC[-]?(\d+)([A-Z]*)', ocr_norm)
+        excel_opac = re.search(r'OPAC[-]?(\d+)([A-Z]*)', excel_norm)
+        
+        if ocr_opac and excel_opac:
+            ocr_num = ocr_opac.group(1)
+            ocr_suffix = ocr_opac.group(2)
+            excel_num = excel_opac.group(1)
+            excel_suffix = excel_opac.group(2)
+            
+            # 完全匹配
+            if ocr_num == excel_num and ocr_suffix == excel_suffix:
+                return True
+            
+            # 只允许特定的OPAC OCR纠错
+            # 1. 9被误识别为6的情况（常见OCR错误）
+            if ocr_num == '9' and excel_num == '6' and ocr_suffix == excel_suffix:
+                return True
+            # 2. 6被误识别为9的情况 
+            if ocr_num == '6' and excel_num == '9' and ocr_suffix == excel_suffix:
+                return True
+            # 3. H后缀的特殊处理（HB可能是6H的OCR错误）
+            if ocr_num == excel_num and ocr_suffix in ['HB', 'H6'] and excel_suffix == 'H':
+                return True
+                
+        # 对于OPAC系列，如果特殊处理都失败了，不再尝试通用规则
+        return False
+
+    # 4. 处理OCR常见错误 - ALGIN专用增强版本
     correction_pairs = [
         # 数字混淆
         ('9', '6'), ('6', '9'),  # 6和9混淆 - OPAC-9应该是OPAC-6
@@ -76,41 +106,11 @@ def is_sku_match_improved(ocr_sku, excel_sku):
     if ocr_core == excel_core:
         return True
     
-    # 5. 特殊处理：OPAC系列的精确匹配 - 修复版本
-    if 'OPAC' in ocr_norm and 'OPAC' in excel_norm:
-        # 提取OPAC后的数字和字母
-        ocr_opac = re.search(r'OPAC[-]?(\d+)([A-Z]*)', ocr_norm)
-        excel_opac = re.search(r'OPAC[-]?(\d+)([A-Z]*)', excel_norm)
-        
-        if ocr_opac and excel_opac:
-            ocr_num = ocr_opac.group(1)
-            ocr_suffix = ocr_opac.group(2)
-            excel_num = excel_opac.group(1)
-            excel_suffix = excel_opac.group(2)
-            
-            # 先检查完全匹配
-            if ocr_num == excel_num and ocr_suffix == excel_suffix:
-                return True
-            
-            # 只在特定情况下进行OCR纠错
-            # 1. 9被误识别为6的情况（常见OCR错误）
-            if ocr_num == '9' and excel_num == '6' and ocr_suffix == excel_suffix:
-                return True
-            # 2. 6被误识别为9的情况 
-            if ocr_num == '6' and excel_num == '9' and ocr_suffix == excel_suffix:
-                return True
-            # 3. H后缀的特殊处理（HB可能是6H的OCR错误）
-            if ocr_num == excel_num and ocr_suffix in ['HB', 'H6'] and excel_suffix == 'H':
-                return True
-            # 4. B可能是6的OCR错误，但只有在没有H后缀时
-            if ocr_num == excel_num and ocr_suffix == 'B' and excel_suffix == '' and excel_num == '6':
-                return True
-    
-    # 6. TFO1S系列特殊处理
+    # 5. TFO1S系列特殊处理
     if 'TFO1S' in ocr_norm and 'TFO1S' in excel_norm:
         return True
     
-    # 7. 014-HG系列的处理
+    # 6. 014-HG系列的处理
     if 'HG' in ocr_norm and 'HG' in excel_norm and '014' in excel_norm:
         # 尝试提取HG后的数字部分
         ocr_hg = re.search(r'HG[-]?(\d{5})[-]?([A-Z]*)', ocr_norm)
@@ -120,11 +120,12 @@ def is_sku_match_improved(ocr_sku, excel_sku):
             if ocr_hg.group(1) == excel_hg.group(1):  # 数字部分匹配
                 return True
     
-    # 8. 前缀匹配（对于可能被截断的SKU）
-    if len(ocr_norm) >= 8 and len(excel_norm) >= 8:
-        if excel_norm.startswith(ocr_norm) or ocr_norm.startswith(excel_norm):
-            # 确保长度差异合理
-            if abs(len(ocr_norm) - len(excel_norm)) <= 3:
-                return True
+    # 7. 前缀匹配（对于可能被截断的SKU）- 更严格的匹配
+    if len(ocr_norm) >= 10 and len(excel_norm) >= 10:
+        # 只有在长的那个完全包含短的那个，且差异<=2时才匹配
+        if excel_norm.startswith(ocr_norm) and len(excel_norm) - len(ocr_norm) <= 2:
+            return True
+        if ocr_norm.startswith(excel_norm) and len(ocr_norm) - len(excel_norm) <= 2:
+            return True
     
     return False
