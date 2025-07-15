@@ -640,28 +640,29 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     def get_algin_sort_key(item):
         if len(item) >= 2:
             sku_string = item[1] if len(item) > 1 else ""
+            original_page_num = item[0] if len(item) > 0 else 999  # 获取原始页面号
             
             # 如果是placeholder，放在最后
             if "[ALGIN Label" in str(sku_string):
-                return (999, 999)
+                return (999, 999, original_page_num)
             
             # 在Excel SKU列表中查找位置
             if algin_sku_order:
                 for i, excel_sku in enumerate(algin_sku_order):
                     if is_sku_match(sku_string, excel_sku):
                         print(f"🎯 SKU匹配成功: {sku_string} -> {excel_sku} (位置{i})")
-                        # 关键优化：只使用Excel位置作为排序键，不包含OCR变体
-                        # 这样相同Excel SKU的所有OCR变体都会被分组在一起
-                        return (0, i)
+                        # 关键修复：使用 (sku_order_index, original_page_num) 作为排序键
+                        # 这样确保：1) 不同SKU按预定义顺序排列 2) 相同SKU按原始页面顺序排列
+                        return (0, i, original_page_num)
                 
                 # 在Excel中没找到，但是有SKU，放在Excel SKU后面
                 print(f"⚠️  SKU未找到匹配: {sku_string}")
-                return (1, hash(sku_string) % 1000)  # 使用hash保持稳定排序
+                return (1, hash(sku_string) % 1000, original_page_num)
             else:
                 # 没有Excel文件，使用智能排序
-                return (0,) + extract_sku_sort_key(sku_string)
+                return (0,) + extract_sku_sort_key(sku_string) + (original_page_num,)
         
-        return (999, 999)
+        return (999, 999, 999)
     
     if mode == "algin":
         # 调试：显示所有识别到的SKU
@@ -672,12 +673,22 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
         
         groups["algin_sorted"].sort(key=get_algin_sort_key)
         
-        # 调试：显示排序后的SKU
-        print(f"🔍 调试 - 排序后的SKU列表:")
+        # 调试：显示排序后的SKU分组
+        print(f"🔍 调试 - 排序后的SKU分组列表:")
+        current_sku = None
+        group_count = 0
         for i, item in enumerate(groups["algin_sorted"]):
             sku = item[1] if len(item) > 1 else "未知"
+            page_num = item[0] if len(item) > 0 else "未知"
             sort_key = get_algin_sort_key(item)
-            print(f"   {i+1}. {sku} (排序键: {sort_key})")
+            
+            # 检查是否是新的SKU组
+            if current_sku != sku:
+                current_sku = sku
+                group_count += 1
+                print(f"   组{group_count}: {sku}")
+            
+            print(f"      页面{page_num} (排序键: {sort_key})")
     
     # 显示处理统计
     print(f"\n📊 处理完成统计:")
