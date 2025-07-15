@@ -522,12 +522,10 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                 else:
                                     potential_sku = match
                                 
-                                # SKU验证 - 只允许ALGIN相关的SKU
+                                # 更严格的SKU验证
                                 if (len(potential_sku) >= 5 and 
                                     not re.match(r'^\d{4}$', potential_sku) and
-                                    not potential_sku.startswith(('AGD', 'DWT', 'NY', 'MA')) and
-                                    # 允许ALGIN相关的SKU格式
-                                    (potential_sku.startswith(('014-', '048-', '050-', '060-', 'TFO1S'))) and
+                                    not potential_sku.startswith('AGD') and
                                     # 确保包含至少一个字母和一个数字
                                     re.search(r'[A-Z]', potential_sku) and
                                     re.search(r'\d', potential_sku)):
@@ -568,29 +566,18 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                     found_skus.append(rebuilt_sku)
                                     print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
                     
-                    # 选择最佳SKU - 优先选择最完整最长的SKU
+                    # 选择最佳SKU
                     if found_skus:
-                        print(f"🔍 页面{idx+1} 找到候选SKU: {found_skus}")
-                        
                         def sku_priority(sku):
-                            # 1. 优先选择完整的SKU（包含多个破折号的）
-                            dash_count = sku.count('-') + sku.count('—')
-                            # 2. 长度越长越好
+                            has_separator = '-' in sku or '—' in sku
                             length = len(sku)
-                            # 3. 避免不完整的SKU（如048-TL）
-                            is_incomplete = (sku.endswith('-TL') or sku.endswith('-HG') or 
-                                           sku.endswith('-OPAC') or len(sku) < 8)
-                            
-                            return (-dash_count, -length, is_incomplete)
+                            return (not has_separator, -length)
                         
                         found_skus.sort(key=sku_priority)
                         best_sku = found_skus[0]
-                        print(f"🎯 页面{idx+1} 最佳SKU选择: {best_sku} (排序后{found_skus})")
                         
                         groups["algin_sorted"].append((idx, best_sku, text[:200]))
                         sku_found = True
-                    else:
-                        print(f"❌ 页面{idx+1} 没有找到有效SKU")
                     
                     if not sku_found:
                         groups["algin_unscanned"].append((idx, "[ALGIN Label - 未扫描出来的label]", text[:200]))
@@ -731,8 +718,11 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             all_pages = algin_with_sku + algin_without_sku + algin_unsorted_pages + unscanned_summary_pages
             
             if not all_pages:
-                print(f"❌ 错误: 没有找到任何ALGIN页面！")
-                continue
+                print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面")
+                all_pages = algin_sorted_pages[:150] if len(algin_sorted_pages) > 150 else algin_sorted_pages
+                if not all_pages:
+                    print(f"❌ 错误: 没有找到任何ALGIN页面！")
+                    continue
             
             print(f"📊 ALGIN页面统计: 有效SKU页面({len(algin_with_sku)}) / 总页数({len(algin_with_sku) + len(algin_without_sku) + len(algin_unsorted_pages) + len(unscanned_summary_pages)})")
             print(f"🔍 过滤掉: 无SKU({len(algin_without_sku)}) + 未扫描({len(algin_unsorted_pages)}) + 总结({len(unscanned_summary_pages)}) 页")
