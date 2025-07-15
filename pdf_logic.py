@@ -588,8 +588,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 else:
                     algin_with_sku.append(item)
             
-            # 输出所有ALGIN页面：排序的SKU + 未扫描的 + 汇总页面
-            all_pages = algin_with_sku + algin_without_sku + algin_unsorted_pages + summary_pages
+            # 只输出有SKU且排序好的ALGIN页面
+            all_pages = algin_with_sku
             
             if not all_pages:
                 print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面", flush=True)
