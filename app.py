@@ -129,6 +129,7 @@ def index():
 @app.route('/', methods=['POST'])
 def upload_warehouse():
     """处理仓库分拣功能"""
+    print("🔄 收到仓库分拣请求", flush=True)
     if 'pdf_file' not in request.files:
         flash('No file selected')
         return redirect(url_for('index'))
@@ -187,6 +188,7 @@ def upload_warehouse():
 @app.route('/sort_labels', methods=['POST'])
 def sort_labels():
     """处理ALGIN客户Label排序功能"""
+    print("🔄 收到ALGIN排序请求", flush=True)
     if 'pdf_file' not in request.files:
         flash('No file selected')
         return redirect(url_for('index'))
@@ -393,23 +395,23 @@ def download_file(filename):
         print(f"✅ 开始下载文件: {abs_filename}", flush=True)
         
         # 获取文件名
-        filename = os.path.basename(abs_filename)
-        print(f"📝 下载文件名: {filename}", flush=True)
+        filename_only = os.path.basename(abs_filename)
+        print(f"📝 下载文件名: {filename_only}", flush=True)
         
         # 发送文件，添加强制下载头
         response = send_file(
             abs_filename, 
             as_attachment=True,
-            download_name=filename,
+            download_name=filename_only,
             mimetype='application/pdf'
         )
         
         # 处理中文文件名的编码问题
         import urllib.parse
-        encoded_filename = urllib.parse.quote(filename, safe='')
+        encoded_filename = urllib.parse.quote(filename_only, safe='')
         
-        # 添加强制下载的响应头
-        response.headers['Content-Disposition'] = f'attachment; filename*=UTF-8\\'\\'{encoded_filename}'
+        # 添加强制下载的响应头 - 使用双引号避免转义问题
+        response.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{encoded_filename}"
         response.headers['Content-Type'] = 'application/pdf'
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response.headers['Pragma'] = 'no-cache'
@@ -471,7 +473,7 @@ def force_download_file(filename):
             file_data,
             mimetype='application/pdf',
             headers={
-                'Content-Disposition': f'attachment; filename*=UTF-8\\'\\'{encoded_filename}',
+                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
                 'Content-Type': 'application/pdf',
                 'Content-Length': str(len(file_data)),
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -488,11 +490,11 @@ def force_download_file(filename):
         return f"Download error: {str(e)}", 500
 
 if __name__ == '__main__':
-    print("🚀 Starting warehouse PDF processor...", flush=True)
-    print(f"📂 Current working directory: {os.getcwd()}", flush=True)
+    print("🚀 启动仓库PDF处理系统...", flush=True)
+    print(f"📂 当前工作目录: {os.getcwd()}", flush=True)
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV') != 'production'
-    print(f"🌐 Server starting on port: {port}", flush=True)
-    print(f"🔧 Debug mode: {debug_mode}", flush=True)
+    print(f"🌐 服务启动在端口: {port}", flush=True)
+    print(f"🔧 调试模式: {debug_mode}", flush=True)
     app.run(host='0.0.0.0', port=port, debug=debug_mode)
