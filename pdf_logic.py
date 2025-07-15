@@ -679,6 +679,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     if mode == "algin":
         print(f"   ALGIN已排序: {len(groups['algin_sorted'])}")
         print(f"   ALGIN未扫描: {len(groups['algin_unscanned'])}")
+        print(f"   未扫描SKU标签: {len(groups['unscanned_sku_labels'])}")
     print(f"   915仓库: {len(groups['915'])}")
     print(f"   8090仓库: {len(groups['8090'])}")
     print(f"   60仓库: {len(groups['60'])}")
