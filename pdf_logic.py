@@ -528,7 +528,10 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                     not potential_sku.startswith('AGD') and
                                     # 确保包含至少一个字母和一个数字
                                     re.search(r'[A-Z]', potential_sku) and
-                                    re.search(r'\d', potential_sku)):
+                                    re.search(r'\d', potential_sku) and
+                                    # 过滤掉明显错误的SKU
+                                    not potential_sku.startswith('OPAC-') and  # 应该是048-OPAC-
+                                    not potential_sku.endswith('HB')):         # 避免6HB这样的错误
                                     found_skus.append(potential_sku)
                                     print(f"✅ 页面{idx+1} 识别SKU: {potential_sku}")
                     
@@ -536,12 +539,24 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                     if not found_skus:
                         # 尝试识别部分SKU信息并重建
                         if 'OPAC' in cleaned_text and '048' in cleaned_text:
-                            # 尝试重建048-OPAC格式
-                            opac_numbers = re.findall(r'OPAC.{0,5}(\d+[A-Z]?)', cleaned_text)
-                            for num in opac_numbers:
-                                rebuilt_sku = f"048-OPAC-{num}"
-                                found_skus.append(rebuilt_sku)
-                                print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
+                            # 尝试重建048-OPAC格式 - 改进版本
+                            opac_patterns = [
+                                r'048.{0,3}OPAC.{0,3}(\d+[A-Z]?)',  # 048-OPAC-6H
+                                r'OPAC.{0,3}(\d+[A-Z]?)',           # OPAC-6H
+                            ]
+                            for pattern in opac_patterns:
+                                matches = re.findall(pattern, cleaned_text)
+                                for num in matches:
+                                    # 修正常见的OCR错误
+                                    if num.endswith('B'):  # 6B -> 6
+                                        num = num[:-1]
+                                    elif num.endswith('9'):  # 可能是6被识别成9
+                                        num = num[:-1] + '6'
+                                    
+                                    rebuilt_sku = f"048-OPAC-{num}"
+                                    found_skus.append(rebuilt_sku)
+                                    print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
+                                    break
                         
                         elif 'TL' in cleaned_text and '048' in cleaned_text and 'W' in cleaned_text:
                             # 尝试重建048-TL格式
@@ -558,13 +573,20 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                             print(f"🔧 页面{idx+1} 重建SKU: TFO1S-BK")
                         
                         elif '014' in cleaned_text and 'HG' in cleaned_text:
-                            # 尝试重建014-HG格式
-                            hg_numbers = re.findall(r'HG.{0,5}(\d{5}).{0,5}([A-Z]+)', cleaned_text)
-                            for num, suffix in hg_numbers:
-                                if len(num) == 5:  # 确保是5位数字
-                                    rebuilt_sku = f"014-HG-{num}-{suffix}"
-                                    found_skus.append(rebuilt_sku)
-                                    print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
+                            # 尝试重建014-HG格式 - 改进版本
+                            hg_patterns = [
+                                r'014.{0,3}HG.{0,3}(\d{5}).{0,3}([A-Z]{2,3})',  # 014-HG-41896-WH
+                                r'HG.{0,3}(\d{5}).{0,3}([A-Z]{2,3})',           # HG-41896-WH
+                                r'(\d{5}).{0,3}([A-Z]{2,3})',                   # 41896-WH
+                            ]
+                            for pattern in hg_patterns:
+                                matches = re.findall(pattern, cleaned_text)
+                                for num, suffix in matches:
+                                    if len(num) == 5:  # 确保是5位数字
+                                        rebuilt_sku = f"014-HG-{num}-{suffix}"
+                                        found_skus.append(rebuilt_sku)
+                                        print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
+                                        break
                     
                     # 选择最佳SKU
                     if found_skus:
