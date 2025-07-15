@@ -237,7 +237,8 @@ def load_algin_sku_order(excel_path="uploads/ALGIN.xlsx"):
         "060-ROT-15V2-GN", "060-ROT-15V2-RD", "060-ROT-22L-BK", "TFO1S-BK"
     ]
     
-    print(f"✅ 加载ALGIN SKU排序顺序: {len(correct_order)} 个SKU (更新时间: 2025-07-15)")
+    print(f"✅ 使用正确的SKU排序顺序")
+    print(f"📊 包含 {len(correct_order)} 个SKU的正确顺序")
     
     return correct_order
 
@@ -736,10 +737,10 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             print(f"📊 ALGIN页面统计: 有效SKU页面({len(algin_with_sku)}) / 总页数({len(algin_with_sku) + len(algin_without_sku) + len(algin_unsorted_pages) + len(unscanned_summary_pages)})")
             print(f"🔍 过滤掉: 无SKU({len(algin_without_sku)}) + 未扫描({len(algin_unsorted_pages)}) + 总结({len(unscanned_summary_pages)}) 页")
                 
-            # 只输出有效的SKU页面
+            # 输出所有ALGIN页面（有SKU的优先排序，然后是无SKU、未扫描和总结页面）
             writer = PdfWriter()
             print(f"🔍 最终输出页面顺序:")
-            for i, item in enumerate(algin_with_sku):
+            for i, item in enumerate(all_pages):
                 page_idx = item[0]
                 sku_string = item[1] if len(item) > 1 else "未知"
                 print(f"   第{i+1}页输出: 原页面{item[0]+1} -> SKU: {sku_string}")
@@ -750,8 +751,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             with open(output_path, "wb") as f:
                 writer.write(f)
             outputs.append(output_path)
-            print(f"✅ 生成文件: {output_name} ({len(algin_with_sku)} 页)")
-            print(f"🎯 最终输出: 只包含成功识别并排序的SKU页面，已过滤掉空白页、总结页和未识别页面")
+            print(f"✅ 生成文件: {output_name} ({len(all_pages)} 页)")
             print(f"📁 文件完整路径: {output_path}", flush=True)
             continue
             
