@@ -166,15 +166,27 @@ def is_sku_match(ocr_sku, excel_sku):
     
     # 7. 特殊处理：OPAC系列的常见OCR错误
     if 'OPAC' in ocr_norm and 'OPAC' in excel_norm:
-        # 提取数字部分
-        ocr_opac_num = re.search(r'OPAC-?(\d+)', ocr_norm)
-        excel_opac_num = re.search(r'OPAC-?(\d+)', excel_norm)
-        if ocr_opac_num and excel_opac_num:
-            ocr_num = ocr_opac_num.group(1)
-            excel_num = excel_opac_num.group(1)
-            # 允许5和9的混淆，6和9的混淆等
-            if (ocr_num == '9' and excel_num == '5') or (ocr_num == '5' and excel_num == '9') or \
-               (ocr_num == '6' and excel_num == '9') or (ocr_num == '9' and excel_num == '6'):
+        # 提取数字部分和后缀
+        ocr_opac_match = re.search(r'OPAC-?(\d+)([A-Z]*)', ocr_norm)
+        excel_opac_match = re.search(r'OPAC-?(\d+)([A-Z]*)', excel_norm)
+        if ocr_opac_match and excel_opac_match:
+            ocr_num = ocr_opac_match.group(1)
+            excel_num = excel_opac_match.group(1)
+            ocr_suffix = ocr_opac_match.group(2)
+            excel_suffix = excel_opac_match.group(2)
+            
+            # 允许数字的OCR错误: 5↔9, 6↔9, 5↔6
+            num_matches = (
+                (ocr_num == '9' and excel_num in ['5', '6']) or
+                (ocr_num == '5' and excel_num in ['9', '6']) or
+                (ocr_num == '6' and excel_num in ['9', '5']) or
+                (ocr_num == excel_num)  # 数字完全匹配
+            )
+            
+            # 后缀必须匹配（H, B等）
+            suffix_matches = (ocr_suffix == excel_suffix)
+            
+            if num_matches and suffix_matches:
                 return True
     
     # 8. TFO1S系列的常见错误
@@ -533,9 +545,11 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             if algin_sku_order:
                 for i, excel_sku in enumerate(algin_sku_order):
                     if is_sku_match(sku_string, excel_sku):
+                        print(f"🔗 SKU匹配: '{sku_string}' → '{excel_sku}' (位置{i})", flush=True)
                         return (0, i, sku_string)
                 
                 # 在Excel中没找到，但是有SKU，放在Excel SKU后面
+                print(f"⚠️  未匹配SKU: '{sku_string}' - 放在列表后面", flush=True)
                 return (1, sku_string)
             else:
                 # 没有Excel文件，使用智能排序
