@@ -367,7 +367,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             
             # Only consider it blank if there's no text AND no visual content
             if not text.strip() and not has_visual_content:
-                groups["blank"].append((idx, ""))
+                groups["blank"].append((idx+1, ""))
                 continue
             
             # If no extractable text but has visual content, try OCR (for ALGIN mode)
@@ -403,25 +403,25 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                             # 检查是否是未能扫出SKU的label
                             if is_unscanned_sku_label(ocr_text):
                                 sort_key = extract_sort_key_for_unscanned(ocr_text)
-                                groups["unscanned_sku_labels"].append((idx, sort_key, ocr_text[:100]))
+                                groups["unscanned_sku_labels"].append((idx+1, sort_key, ocr_text[:100]))
                                 continue
                             # 假设这是ALGIN标签但无法识别
-                            groups["algin_unscanned"].append((idx, "[ALGIN Label - OCR失败]"))
+                            groups["algin_unscanned"].append((idx+1, "[ALGIN Label - OCR失败]"))
                             continue
                     except Exception as e:
                         print(f"❌ 页面{idx+1} OCR失败: {str(e)}")
-                        groups["algin_unscanned"].append((idx, f"[ALGIN Label - OCR异常: {str(e)[:30]}]"))
+                        groups["algin_unscanned"].append((idx+1, f"[ALGIN Label - OCR异常: {str(e)[:30]}]"))
                         continue
                 else:
                     print(f"⚠️  页面{idx+1} OCR不可用，有视觉内容但无法处理")
                     # 如果OCR不可用，但页面有视觉内容，我们假设这可能是ALGIN标签
-                    groups["algin_unscanned"].append((idx, "[ALGIN Label - OCR不可用]"))
+                    groups["algin_unscanned"].append((idx+1, "[ALGIN Label - OCR不可用]"))
                     continue
             
             # First, check if this is an "未能扫出SKU的label" page (for ALGIN mode)
             if mode == "algin" and is_unscanned_sku_label(text):
                 sort_key = extract_sort_key_for_unscanned(text)
-                groups["unscanned_sku_labels"].append((idx, sort_key, text[:100]))
+                groups["unscanned_sku_labels"].append((idx+1, sort_key, text[:100]))
                 print(f"📋 识别为总结页面: 页面{idx+1}")
                 continue
             
@@ -586,13 +586,13 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                         best_sku = found_skus[0]
                         print(f"🎯 页面{idx+1} 最佳SKU选择: {best_sku} (排序后{found_skus})")
                         
-                        groups["algin_sorted"].append((idx, best_sku, text[:200]))
+                        groups["algin_sorted"].append((idx+1, best_sku, text[:200]))
                         sku_found = True
                     else:
                         print(f"❌ 页面{idx+1} 没有找到有效SKU")
                     
                     if not sku_found:
-                        groups["algin_unscanned"].append((idx, "[ALGIN Label - 未扫描出来的label]", text[:200]))
+                        groups["algin_unscanned"].append((idx+1, "[ALGIN Label - 未扫描出来的label]", text[:200]))
                     continue
                 
             # Look for 915 warehouse pattern
@@ -600,9 +600,9 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             if m_915:
                 prefix, num, suffix = m_915.group(1), int(m_915.group(2)), m_915.group(3)
                 if prefix in WAREHOUSE_PREFIXES["915"]:
-                    groups["915"].append((idx, prefix, num, suffix))
+                    groups["915"].append((idx+1, prefix, num, suffix))
                 else:
-                    groups["unknown"].append((idx, text[:100]))
+                    groups["unknown"].append((idx+1, text[:100]))
                 continue
                 
             # Look for other warehouse patterns
@@ -610,15 +610,15 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             if m_other:
                 prefix, row, num = m_other.group(1), m_other.group(2), int(m_other.group(3))
                 if prefix in WAREHOUSE_PREFIXES["8090"]:
-                    groups["8090"].append((idx, prefix, row, num))
+                    groups["8090"].append((idx+1, prefix, row, num))
                 elif prefix in WAREHOUSE_PREFIXES["60"]:
-                    groups["60"].append((idx, prefix, row, num))
+                    groups["60"].append((idx+1, prefix, row, num))
                 else:
-                    groups["unknown"].append((idx, text[:100]))
+                    groups["unknown"].append((idx+1, text[:100]))
                 continue
                 
             # If no patterns found, add to unknown
-            groups["unknown"].append((idx, text[:100]))
+            groups["unknown"].append((idx+1, text[:100]))
     
     # 显示最终处理进度
     print(f"📊 处理完成: {processed_pages}/{total_pages} (100.0%)")
@@ -744,7 +744,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             # 只输出有效的SKU页面
             writer = PdfWriter()
             for item in algin_with_sku:
-                page_idx = item[0]
+                page_idx = item[0] - 1  # Convert back to 0-based index for PDF reader
                 writer.add_page(reader.pages[page_idx])
             
             output_name = "ALGIN_Label_已排序.pdf"
@@ -764,7 +764,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             
         writer = PdfWriter()
         for item in pages:
-            page_idx = item[0]
+            page_idx = item[0] - 1  # Convert back to 0-based index for PDF reader
             writer.add_page(reader.pages[page_idx])
         
         # Determine output filename
