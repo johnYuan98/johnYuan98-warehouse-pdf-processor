@@ -192,30 +192,11 @@ def is_sku_match(ocr_sku, excel_sku):
                 '5': ['6', '9'],  # 5经常被误识别为6或9
             }
             
-            # 检查数字匹配 - 更严格，只允许明确的OCR错误
+            # 检查数字匹配 - 只在数字完全相同时匹配，不要纠错
             num_matches = (ocr_num == excel_num)
             
-            # 只在明确的OCR错误情况下才进行纠错
-            if not num_matches:
-                # 9和6的混淆（最常见）
-                if (ocr_num == '9' and excel_num == '6') or (ocr_num == '6' and excel_num == '9'):
-                    num_matches = True
-                # 5和6的混淆（不太常见，需要更小心）
-                elif (ocr_num == '5' and excel_num == '6') or (ocr_num == '6' and excel_num == '5'):
-                    # 需要后缀也匹配才允许这种纠错
-                    if ocr_suffix == excel_suffix:
-                        num_matches = True
-            
-            # 后缀纠错
-            suffix_corrections = {
-                'H': ['', 'B', '8'],  # H容易混淆
-                'B': ['H', '8'],      # B和H混淆
-                '': ['H'],            # 可能漏识别H
-            }
-            
-            suffix_matches = (ocr_suffix == excel_suffix or
-                            excel_suffix in suffix_corrections.get(ocr_suffix, []) or
-                            ocr_suffix in suffix_corrections.get(excel_suffix, []))
+            # 后缀匹配 - 只在完全相同时匹配，不要纠错
+            suffix_matches = (ocr_suffix == excel_suffix)
             
             if num_matches and suffix_matches:
                 print(f"🔧 OPAC纠错匹配: {ocr_sku} -> {excel_sku}")
