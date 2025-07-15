@@ -409,7 +409,7 @@ def download_file(filename):
         encoded_filename = urllib.parse.quote(filename, safe='')
         
         # 添加强制下载的响应头
-        response.headers['Content-Disposition'] = f'attachment; filename*=UTF-8\'\''{encoded_filename}'
+        response.headers['Content-Disposition'] = f'attachment; filename*=UTF-8\\'\\'{encoded_filename}'
         response.headers['Content-Type'] = 'application/pdf'
         response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         response.headers['Pragma'] = 'no-cache'
@@ -471,7 +471,7 @@ def force_download_file(filename):
             file_data,
             mimetype='application/pdf',
             headers={
-                'Content-Disposition': f'attachment; filename*=UTF-8\'\''{encoded_filename}',
+                'Content-Disposition': f'attachment; filename*=UTF-8\\'\\'{encoded_filename}',
                 'Content-Type': 'application/pdf',
                 'Content-Length': str(len(file_data)),
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
