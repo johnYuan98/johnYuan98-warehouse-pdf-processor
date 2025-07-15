@@ -587,8 +587,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 else:
                     algin_with_sku.append(item)
             
-            # 只输出有SKU且排序好的ALGIN页面
-            all_pages = algin_with_sku
+            # 输出所有ALGIN页面（有SKU的排在前面，未扫描的放在后面）
+            all_pages = algin_with_sku + algin_without_sku + algin_unsorted_pages
             
             if not all_pages:
                 print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面", flush=True)
@@ -596,6 +596,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 if not all_pages:
                     print(f"❌ 错误: 没有找到任何ALGIN页面！", flush=True)
                     continue
+            
+            print(f"📋 输出页面构成: 有SKU {len(algin_with_sku)} + 无SKU {len(algin_without_sku)} + 未扫描 {len(algin_unsorted_pages)} = 总计 {len(all_pages)} 页", flush=True)
                 
             writer = PdfWriter()
             for item in all_pages:
