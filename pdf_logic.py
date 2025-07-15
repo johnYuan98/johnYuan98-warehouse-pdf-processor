@@ -97,7 +97,14 @@ def extract_sku_sort_key(sku_text):
     # 如果没有匹配任何模式，使用字母排序
     return (9999, sku_text.upper(), 0)
 
+# 导入改进的SKU匹配函数
+from improved_sku_match import is_sku_match_improved
+
 def is_sku_match(ocr_sku, excel_sku):
+    """使用改进的SKU匹配逻辑"""
+    return is_sku_match_improved(ocr_sku, excel_sku)
+
+def is_sku_match_old(ocr_sku, excel_sku):
     """
     改进的SKU匹配逻辑，处理OCR扫描结果与正确SKU列表的差异
     """
@@ -442,37 +449,69 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 is_algin_label = not is_definitely_not_algin
                 
                 if is_algin_label:
+                    # 先进行OCR文本清理和预处理
+                    def clean_ocr_text(text):
+                        """清理OCR文本中的常见错误"""
+                        cleaned = text.upper()
+                        
+                        # OCR常见错误纠正
+                        replacements = {
+                            '048—OPAC-': '048-OPAC-',
+                            '048—OPAC—': '048-OPAC-',
+                            '048-—OPAC-': '048-OPAC-',
+                            '048—OPA': '048-OPAC-',
+                            '048-—OP': '048-OPAC-',
+                            '048—TL—': '048-TL-',
+                            '048-—TL—': '048-TL-',
+                            '014—HG—': '014-HG-',
+                            '014-—HG—': '014-HG-',
+                            'OPAC-9': 'OPAC-6',  # OCR常把6识别为9
+                            'OPAC-9B': 'OPAC-6',
+                            'OPAC-9H': 'OPAC-6H',
+                            'OPAC-9HB': 'OPAC-6H',
+                            'TFO1S—': 'TFO1S-',
+                            'W5KWDS': 'W8KWD',  # 修正常见OCR错误
+                        }
+                        
+                        for wrong, correct in replacements.items():
+                            cleaned = cleaned.replace(wrong, correct)
+                        
+                        return cleaned
+                    
+                    cleaned_text = clean_ocr_text(text)
+                    print(f"🧹 页面{idx+1} 清理后文本: {cleaned_text[:100]}...")
+                    
                     # 使用智能SKU识别和排序逻辑 - 扩展模式匹配
                     algin_sku_patterns = [
-                        # 标准ALGIN SKU格式
-                        r'\b(\d{3})-([A-Z]{2,4})-([A-Z0-9]+)\b',                    # 048-OPAC-5, 048-TL-W6KWD
-                        r'\b(\d{3})-([A-Z]{2,4})—(\d+)-?([A-Z]*)\b',                # 048-OPAC—5, 014-HG—17061-B  
-                        r'\b([A-Z0-9]{3,5})-([A-Z]{2})\b',                          # TFO1S-BK
-                        r'\b([A-Z0-9]{3,5})—([A-Z]{2})\b',                          # TFO1S—BK
-                        r'\b(\d{3})-([A-Z]{2})—([A-Z0-9]+)\b',                      # 048-TL—W6KWD
+                        # 048系列OPAC和TL格式 - 最高优先级
+                        r'\b(048)-(OPAC)-(\d+[A-Z]?)\b',                           # 048-OPAC-5, 048-OPAC-6H
+                        r'\b(048)-(TL)-(W\d+[A-Z]+)\b',                           # 048-TL-W6KWD, 048-TL-W10KWD
+                        
+                        # TFO1S系列
+                        r'\b(TFO1S)-(BK)\b',                                       # TFO1S-BK
                         
                         # 014-HG系列格式
-                        r'\b(014)-([A-Z]{2})-(\d{5})-([A-Z]+)\b',                   # 014-HG-17061-A
-                        r'\b(014)-([A-Z]{2})-(\d{5})-([A-Z]{2,3})\b',               # 014-HG-17061-BRO
-                        r'\b(014)-([A-Z]{2})-(\d{5})\b',                            # 014-HG-41023
+                        r'\b(014)-(HG)-(\d{5})-(\d[A-Z]+)\b',                     # 014-HG-17061-A
+                        r'\b(014)-(HG)-(\d{5})-(\d[A-Z]{2,3})\b',                 # 014-HG-17061-BRO
+                        r'\b(014)-(HG)-(\d{5})\b',                                # 014-HG-41023
                         
                         # 050系列格式
-                        r'\b(050)-([A-Z]{2,3})-(\d{2,5})-?([A-Z]*)\b',              # 050-HA-50028, 050-LMT-23-GY
+                        r'\b(050)-(HA|LMT)-(\d{2,5})-?([A-Z]*)\b',                # 050-HA-50028, 050-LMT-23-GY
                         
                         # 060系列格式
-                        r'\b(060)-([A-Z]{3})-(\d{2,3}[A-Z]*)-([A-Z]{2,3})\b',       # 060-ROT-11L-WH, 060-ROT-15V2-DG
+                        r'\b(060)-(ROT)-(\d{2,3}[A-Z]*)-(\d[A-Z]{2,3})\b',        # 060-ROT-11L-WH, 060-ROT-15V2-DG
                         
-                        # 通用灵活格式（最后匹配）
-                        r'\b(\d{3})-([A-Z]{2,4})-([A-Z0-9-]+)\b',                   # 通用数字-字母-字母数字格式
-                        r'\b([A-Z0-9]{3,6})-([A-Z0-9]{2,6})\b',                     # 通用字母数字-字母数字格式
+                        # 备用模式 - 较低优先级
+                        r'\b(\d{3})-(\d[A-Z]{2,4})-(\d[A-Z0-9]+)\b',              # 通用数字-字母-字母数字格式
+                        r'\b([A-Z0-9]{3,6})-(\d[A-Z0-9]{2,6})\b',                 # 通用字母数字-字母数字格式
                     ]
                     
                     sku_found = False
                     found_skus = []
                     
-                    # 查找完整SKU格式
+                    # 查找完整SKU格式 - 在清理后的文本中搜索
                     for pattern in algin_sku_patterns:
-                        matches = re.findall(pattern, text.upper())
+                        matches = re.findall(pattern, cleaned_text)
                         if matches:
                             for match in matches:
                                 if isinstance(match, tuple):
@@ -482,21 +521,51 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                 else:
                                     potential_sku = match
                                 
-                                # 更严格的SKU验证 - 只允许ALGIN相关的SKU
+                                # SKU验证 - 只允许ALGIN相关的SKU
                                 if (len(potential_sku) >= 5 and 
                                     not re.match(r'^\d{4}$', potential_sku) and
-                                    not potential_sku.startswith('AGD') and
-                                    not potential_sku.startswith('DWT') and
-                                    not potential_sku.startswith('NY') and
-                                    not potential_sku.startswith('MA') and
-                                    # 只允许ALGIN相关的SKU格式
-                                    (potential_sku.startswith(('014-', '048-', '050-', '060-', 'TFO1S')) or
-                                     potential_sku.startswith('OPAC')) and
+                                    not potential_sku.startswith(('AGD', 'DWT', 'NY', 'MA')) and
+                                    # 允许ALGIN相关的SKU格式
+                                    (potential_sku.startswith(('014-', '048-', '050-', '060-', 'TFO1S'))) and
                                     # 确保包含至少一个字母和一个数字
                                     re.search(r'[A-Z]', potential_sku) and
                                     re.search(r'\d', potential_sku)):
                                     found_skus.append(potential_sku)
                                     print(f"✅ 页面{idx+1} 识别SKU: {potential_sku}")
+                    
+                    # 如果没找到标准格式，尝试部分识别和重建SKU
+                    if not found_skus:
+                        # 尝试识别部分SKU信息并重建
+                        if 'OPAC' in cleaned_text and '048' in cleaned_text:
+                            # 尝试重建048-OPAC格式
+                            opac_numbers = re.findall(r'OPAC.{0,5}(\d+[A-Z]?)', cleaned_text)
+                            for num in opac_numbers:
+                                rebuilt_sku = f"048-OPAC-{num}"
+                                found_skus.append(rebuilt_sku)
+                                print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
+                        
+                        elif 'TL' in cleaned_text and '048' in cleaned_text and 'W' in cleaned_text:
+                            # 尝试重建048-TL格式
+                            tl_patterns = re.findall(r'(W\d+[A-Z]+)', cleaned_text)
+                            for pattern in tl_patterns:
+                                if len(pattern) >= 4:  # W6KWD, W10KWD等
+                                    rebuilt_sku = f"048-TL-{pattern}"
+                                    found_skus.append(rebuilt_sku)
+                                    print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
+                        
+                        elif 'TFO1S' in cleaned_text and 'BK' in cleaned_text:
+                            # TFO1S-BK格式
+                            found_skus.append("TFO1S-BK")
+                            print(f"🔧 页面{idx+1} 重建SKU: TFO1S-BK")
+                        
+                        elif '014' in cleaned_text and 'HG' in cleaned_text:
+                            # 尝试重建014-HG格式
+                            hg_numbers = re.findall(r'HG.{0,5}(\d{5}).{0,5}([A-Z]+)', cleaned_text)
+                            for num, suffix in hg_numbers:
+                                if len(num) == 5:  # 确保是5位数字
+                                    rebuilt_sku = f"014-HG-{num}-{suffix}"
+                                    found_skus.append(rebuilt_sku)
+                                    print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
                     
                     # 选择最佳SKU - 优先选择最完整最长的SKU
                     if found_skus:
@@ -656,10 +725,12 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 print(f"❌ 错误: 没有找到任何ALGIN页面！")
                 continue
             
-            print(f"📊 ALGIN页面统计: 有SKU({len(algin_with_sku)}) + 无SKU({len(algin_without_sku)}) + 未扫描({len(algin_unsorted_pages)}) + 总结({len(unscanned_summary_pages)}) = 总计({len(all_pages)})")
+            print(f"📊 ALGIN页面统计: 有效SKU页面({len(algin_with_sku)}) / 总页数({len(algin_with_sku) + len(algin_without_sku) + len(algin_unsorted_pages) + len(unscanned_summary_pages)})")
+            print(f"🔍 过滤掉: 无SKU({len(algin_without_sku)}) + 未扫描({len(algin_unsorted_pages)}) + 总结({len(unscanned_summary_pages)}) 页")
                 
+            # 只输出有效的SKU页面
             writer = PdfWriter()
-            for item in all_pages:
+            for item in algin_with_sku:
                 page_idx = item[0]
                 writer.add_page(reader.pages[page_idx])
             
@@ -668,7 +739,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             with open(output_path, "wb") as f:
                 writer.write(f)
             outputs.append(output_path)
-            print(f"✅ 生成文件: {output_name} ({len(all_pages)} 页)")
+            print(f"✅ 生成文件: {output_name} ({len(algin_with_sku)} 页)")
+            print(f"🎯 最终输出: 只包含成功识别并排序的SKU页面，已过滤掉空白页、总结页和未识别页面")
             print(f"📁 文件完整路径: {output_path}", flush=True)
             continue
             
