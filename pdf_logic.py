@@ -293,7 +293,7 @@ def get_warehouse_sort_key(item):
     return (999, 999, 999)
 
 def process_pdf(input_pdf, output_dir, mode="warehouse"):
-    print(f"🔄 开始处理PDF: {os.path.basename(input_pdf)}", flush=True)
+    print(f"🔄 开始处理PDF: {os.path.basename(input_pdf)} [v2.0-STABLE]", flush=True)
     sys.stdout.flush()
     
     reader = PdfReader(input_pdf)
