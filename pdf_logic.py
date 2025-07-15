@@ -205,9 +205,8 @@ def load_algin_sku_order(excel_path="uploads/ALGIN.xlsx"):
         "060-ROT-15V2-GN", "060-ROT-15V2-RD", "060-ROT-22L-BK", "TFO1S-BK"
     ]
     
-    print(f"✅ 使用正确的SKU排序顺序", flush=True)
-    print(f"📊 包含 {len(correct_order)} 个SKU的正确顺序", flush=True)
-    sys.stdout.flush()
+    print(f"✅ 使用正确的SKU排序顺序")
+    print(f"📊 包含 {len(correct_order)} 个SKU的正确顺序")
     
     return correct_order
 
@@ -293,13 +292,11 @@ def get_warehouse_sort_key(item):
     return (999, 999, 999)
 
 def process_pdf(input_pdf, output_dir, mode="warehouse"):
-    print(f"🔄 开始处理PDF: {os.path.basename(input_pdf)} [v2.0-STABLE]", flush=True)
-    sys.stdout.flush()
+    print(f"🔄 开始处理PDF: {os.path.basename(input_pdf)}")
     
     reader = PdfReader(input_pdf)
     total_pages = len(reader.pages)
-    print(f"📄 总页数: {total_pages}", flush=True)
-    sys.stdout.flush()
+    print(f"📄 总页数: {total_pages}")
     
     # 根据模式决定是否加载ALGIN SKU顺序
     if mode == "algin":
@@ -322,8 +319,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             
             # 每处理10页显示一次进度
             if processed_pages % 10 == 0:
-                print(f"📊 处理进度: {processed_pages}/{total_pages} ({processed_pages/total_pages*100:.1f}%)", flush=True)
-                sys.stdout.flush()
+                print(f"📊 处理进度: {processed_pages}/{total_pages} ({processed_pages/total_pages*100:.1f}%)")
             
             text = page.extract_text() or ""
             
@@ -513,8 +509,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             groups["unknown"].append((idx, text[:100]))
     
     # 显示最终处理进度
-    print(f"📊 处理完成: {processed_pages}/{total_pages} (100.0%)", flush=True)
-    sys.stdout.flush()
+    print(f"📊 处理完成: {processed_pages}/{total_pages} (100.0%)")
     
     # Sort each warehouse group
     for warehouse in ["915", "8090", "60"]:
@@ -547,17 +542,16 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
         groups["algin_sorted"].sort(key=get_algin_sort_key)
     
     # 显示处理统计
-    print(f"\n📊 处理完成统计:", flush=True)
-    print(f"   总页数: {total_pages}", flush=True)
+    print(f"\n📊 处理完成统计:")
+    print(f"   总页数: {total_pages}")
     if mode == "algin":
-        print(f"   ALGIN已排序: {len(groups['algin_sorted'])}", flush=True)
-        print(f"   ALGIN未扫描: {len(groups['algin_unscanned'])}", flush=True)
-    print(f"   915仓库: {len(groups['915'])}", flush=True)
-    print(f"   8090仓库: {len(groups['8090'])}", flush=True)
-    print(f"   60仓库: {len(groups['60'])}", flush=True)
-    print(f"   未知类型: {len(groups['unknown'])}", flush=True)
-    print(f"   空白页: {len(groups['blank'])}", flush=True)
-    sys.stdout.flush()
+        print(f"   ALGIN已排序: {len(groups['algin_sorted'])}")
+        print(f"   ALGIN未扫描: {len(groups['algin_unscanned'])}")
+    print(f"   915仓库: {len(groups['915'])}")
+    print(f"   8090仓库: {len(groups['8090'])}")
+    print(f"   60仓库: {len(groups['60'])}")
+    print(f"   未知类型: {len(groups['unknown'])}")
+    print(f"   空白页: {len(groups['blank'])}")
     
     outputs = []
     os.makedirs(output_dir, exist_ok=True)
@@ -572,10 +566,9 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     
     for warehouse in processing_order:
         if warehouse == "algin_combined":
-            # 对于ALGIN排序，处理所有ALGIN相关的页面
+            # 对于ALGIN排序，只处理ALGIN相关的页面
             algin_sorted_pages = groups["algin_sorted"]
             algin_unsorted_pages = groups["algin_unscanned"]
-            summary_pages = groups["unscanned_sku_labels"]
             
             # 分离有SKU和无SKU的ALGIN页面
             algin_with_sku = []
@@ -592,10 +585,10 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             all_pages = algin_with_sku
             
             if not all_pages:
-                print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面", flush=True)
+                print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面")
                 all_pages = algin_sorted_pages[:150] if len(algin_sorted_pages) > 150 else algin_sorted_pages
                 if not all_pages:
-                    print(f"❌ 错误: 没有找到任何ALGIN页面！", flush=True)
+                    print(f"❌ 错误: 没有找到任何ALGIN页面！")
                     continue
                 
             writer = PdfWriter()
@@ -608,13 +601,12 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             with open(output_path, "wb") as f:
                 writer.write(f)
             outputs.append(output_path)
-            print(f"✅ 生成文件: {output_name} ({len(all_pages)} 页)", flush=True)
-            sys.stdout.flush()
+            print(f"✅ 生成文件: {output_name} ({len(all_pages)} 页)")
             continue
             
         pages = groups[warehouse]
         if not pages:
-            print(f"⚠️  {warehouse} 组为空，跳过", flush=True)
+            print(f"⚠️  {warehouse} 组为空，跳过")
             continue
             
         writer = PdfWriter()
@@ -633,8 +625,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             
             if algin_count > len(pages) * 0.5:  # 如果超过50%的页面包含ALGIN标签
                 output_name = "ALGIN标签页面_请使用ALGIN排序功能.pdf"
-                print(f"🔍 检测到 {algin_count}/{len(pages)} 页包含ALGIN标签", flush=True)
-                print(f"💡 建议：请使用'ALGIN客户的Label排序'功能处理此文件", flush=True)
+                print(f"🔍 检测到 {algin_count}/{len(pages)} 页包含ALGIN标签")
+                print(f"💡 建议：请使用'ALGIN客户的Label排序'功能处理此文件")
             else:
                 output_name = "未找到仓库.pdf"
         elif warehouse == "blank":
@@ -646,7 +638,6 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
         with open(output_path, "wb") as f:
             writer.write(f)
         outputs.append(output_path)
-        print(f"✅ 生成文件: {output_name} ({len(pages)} 页)", flush=True)
-        sys.stdout.flush()
+        print(f"✅ 生成文件: {output_name} ({len(pages)} 页)")
     
     return outputs
