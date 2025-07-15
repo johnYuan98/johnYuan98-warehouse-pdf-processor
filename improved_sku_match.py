@@ -76,7 +76,7 @@ def is_sku_match_improved(ocr_sku, excel_sku):
     if ocr_core == excel_core:
         return True
     
-    # 5. 特殊处理：OPAC系列的智能匹配
+    # 5. 特殊处理：OPAC系列的精确匹配 - 修复版本
     if 'OPAC' in ocr_norm and 'OPAC' in excel_norm:
         # 提取OPAC后的数字和字母
         ocr_opac = re.search(r'OPAC[-]?(\d+)([A-Z]*)', ocr_norm)
@@ -88,14 +88,23 @@ def is_sku_match_improved(ocr_sku, excel_sku):
             excel_num = excel_opac.group(1)
             excel_suffix = excel_opac.group(2)
             
-            # 数字纠错：9->6，5->6等
-            if (ocr_num in ['9', '5'] and excel_num == '6') or (ocr_num == '6' and excel_num in ['9', '5']):
-                # 如果数字可能匹配，检查后缀
-                if ocr_suffix == excel_suffix:
-                    return True
-                # 处理H后缀的特殊情况
-                elif (ocr_suffix in ['H', 'HB'] and excel_suffix == 'H') or (ocr_suffix == '' and excel_suffix == ''):
-                    return True
+            # 先检查完全匹配
+            if ocr_num == excel_num and ocr_suffix == excel_suffix:
+                return True
+            
+            # 只在特定情况下进行OCR纠错
+            # 1. 9被误识别为6的情况（常见OCR错误）
+            if ocr_num == '9' and excel_num == '6' and ocr_suffix == excel_suffix:
+                return True
+            # 2. 6被误识别为9的情况 
+            if ocr_num == '6' and excel_num == '9' and ocr_suffix == excel_suffix:
+                return True
+            # 3. H后缀的特殊处理（HB可能是6H的OCR错误）
+            if ocr_num == excel_num and ocr_suffix in ['HB', 'H6'] and excel_suffix == 'H':
+                return True
+            # 4. B可能是6的OCR错误，但只有在没有H后缀时
+            if ocr_num == excel_num and ocr_suffix == 'B' and excel_suffix == '' and excel_num == '6':
+                return True
     
     # 6. TFO1S系列特殊处理
     if 'TFO1S' in ocr_norm and 'TFO1S' in excel_norm:
