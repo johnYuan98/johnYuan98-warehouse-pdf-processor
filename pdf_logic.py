@@ -237,7 +237,7 @@ def load_algin_sku_order(excel_path="uploads/ALGIN.xlsx"):
         "060-ROT-15V2-GN", "060-ROT-15V2-RD", "060-ROT-22L-BK", "TFO1S-BK"
     ]
     
-    print(f"✅ 加载ALGIN SKU排序顺序: {len(correct_order)} 个SKU")
+    print(f"✅ 加载ALGIN SKU排序顺序: {len(correct_order)} 个SKU (更新时间: 2025-07-15)")
     
     return correct_order
 
