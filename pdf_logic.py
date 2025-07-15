@@ -120,35 +120,56 @@ def is_sku_match(ocr_sku, excel_sku):
     if ocr_norm == excel_norm:
         return True
     
-    # 3. 处理OCR常见错误
-    ocr_corrections = {
-        '0': 'O', 'O': '0',  # 数字0和字母O
-        '1': 'I', 'I': '1',  # 数字1和字母I
-        '5': 'S', 'S': '5',  # 数字5和字母S
-        '8': 'B', 'B': '8',  # 数字8和字母B
-        '9': '6', '6': '9',  # 常见的9和6混淆
-        'G': '6', '6': 'G',  # G和6混淆
-    }
+    # 3. 增强的OCR错误纠正（特别针对Render环境）
+    def fix_ocr_errors(text):
+        corrections = {
+            # 数字字母混淆
+            '0': 'O', 'O': '0', '1': 'I', 'I': '1', '5': 'S', 'S': '5',
+            '8': 'B', 'B': '8', '9': '6', '6': '9', 'G': '6', '6': 'G',
+            # 特殊字符错误
+            '—': '-', '–': '-', '_': '-', '／': '/', '\\': '/', 
+            # 常见OCR错误
+            'QPAC': 'OPAC', '0PAC': 'OPAC', 'OPAG': 'OPAC',
+            'TFO1S': 'TFO1S', 'TF01S': 'TFO1S', 'TFOIS': 'TFO1S',
+            'W12KWD': 'W12KWD', 'W12KW0': 'W12KWD', 'W12KW': 'W12KWD',
+            'W6KWD': 'W6KWD', 'W6KW0': 'W6KWD', 'W6KW': 'W6KWD',
+            'W10KWD': 'W10KWD', 'W10KW0': 'W10KWD', 'W10KW': 'W10KWD',
+            'W14KWD': 'W14KWD', 'W14KW0': 'W14KWD', 'W14KW': 'W14KWD',
+            'W8KWD': 'W8KWD', 'W8KW0': 'W8KWD', 'W8KW': 'W8KWD',
+            'W5KWDS': 'W5KWDS', 'W5KWD5': 'W5KWDS', 'W5KWD': 'W5KWDS',
+        }
+        
+        fixed = text
+        for wrong, correct in corrections.items():
+            fixed = fixed.replace(wrong, correct)
+        return fixed
     
-    # 生成OCR纠错版本
-    ocr_corrected = ocr_norm
-    for wrong, correct in ocr_corrections.items():
-        ocr_corrected = ocr_corrected.replace(wrong, correct)
+    ocr_corrected = fix_ocr_errors(ocr_norm)
+    excel_corrected = fix_ocr_errors(excel_norm)
     
-    if ocr_corrected == excel_norm:
+    if ocr_corrected == excel_corrected:
         return True
     
-    # 4. 核心部分匹配（去除特殊字符）
+    # 4. 核心部分匹配（更严格的验证）
     def extract_core_sku(sku):
         import re
         parts = re.findall(r'[A-Z0-9]+', sku)
         return ''.join(parts)
     
-    ocr_core = extract_core_sku(ocr_norm)
-    excel_core = extract_core_sku(excel_norm)
+    ocr_core = extract_core_sku(ocr_corrected)
+    excel_core = extract_core_sku(excel_corrected)
     
-    if ocr_core == excel_core:
-        return True
+    if len(ocr_core) >= 6 and len(excel_core) >= 6:
+        if ocr_core == excel_core:
+            return True
+        
+        # 允许轻微差异（1-2个字符）
+        if abs(len(ocr_core) - len(excel_core)) <= 2:
+            # 计算相似度
+            common_chars = sum(1 for a, b in zip(ocr_core, excel_core) if a == b)
+            similarity = common_chars / max(len(ocr_core), len(excel_core))
+            if similarity >= 0.85:  # 85%相似度
+                return True
     
     # 5. 前缀匹配（对于可能被截断的SKU）
     if len(ocr_norm) >= 8 and len(excel_norm) >= 8:
@@ -164,22 +185,38 @@ def is_sku_match(ocr_sku, excel_sku):
             if abs(len(ocr_norm) - len(excel_norm)) <= 2:
                 return True
     
-    # 7. 特殊处理：OPAC系列的常见OCR错误
-    if 'OPAC' in ocr_norm and 'OPAC' in excel_norm:
-        # 提取数字部分
-        ocr_opac_num = re.search(r'OPAC-?(\d+)', ocr_norm)
-        excel_opac_num = re.search(r'OPAC-?(\d+)', excel_norm)
-        if ocr_opac_num and excel_opac_num:
-            ocr_num = ocr_opac_num.group(1)
-            excel_num = excel_opac_num.group(1)
-            # 允许5和9的混淆，6和9的混淆等
-            if (ocr_num == '9' and excel_num == '5') or (ocr_num == '5' and excel_num == '9') or \
-               (ocr_num == '6' and excel_num == '9') or (ocr_num == '9' and excel_num == '6'):
-                return True
+    # 7. 特殊模式匹配（增强版）
+    # OPAC系列
+    if 'OPAC' in ocr_corrected and 'OPAC' in excel_corrected:
+        ocr_opac = re.search(r'048-?OPAC-?([569]H?)', ocr_corrected)
+        excel_opac = re.search(r'048-?OPAC-?([569]H?)', excel_corrected)
+        if ocr_opac and excel_opac:
+            return ocr_opac.group(1) == excel_opac.group(1)
     
-    # 8. TFO1S系列的常见错误
-    if ('TFO1S' in ocr_norm or 'TF01S' in ocr_norm) and 'TFO1S' in excel_norm:
+    # TL系列
+    if 'TL' in ocr_corrected and 'TL' in excel_corrected:
+        ocr_tl = re.search(r'048-?TL-?(W\d+KWD?S?)', ocr_corrected)
+        excel_tl = re.search(r'048-?TL-?(W\d+KWD?S?)', excel_corrected)
+        if ocr_tl and excel_tl:
+            return ocr_tl.group(1) == excel_tl.group(1)
+    
+    # TFO1S系列
+    if ('TFO1S' in ocr_corrected or 'TF01S' in ocr_corrected or 'TFOIS' in ocr_corrected) and 'TFO1S' in excel_corrected:
         return True
+    
+    # 8. 宽松匹配（处理严重OCR错误）
+    if len(ocr_norm) >= 8 and len(excel_norm) >= 8:
+        # 检查数字序列匹配
+        ocr_numbers = ''.join(re.findall(r'\d+', ocr_norm))
+        excel_numbers = ''.join(re.findall(r'\d+', excel_norm))
+        if len(ocr_numbers) >= 3 and ocr_numbers == excel_numbers:
+            # 检查字母序列相似度
+            ocr_letters = ''.join(re.findall(r'[A-Z]+', ocr_norm))
+            excel_letters = ''.join(re.findall(r'[A-Z]+', excel_norm))
+            if len(ocr_letters) >= 3 and abs(len(ocr_letters) - len(excel_letters)) <= 2:
+                common_letters = sum(1 for a, b in zip(ocr_letters, excel_letters) if a == b)
+                if common_letters / max(len(ocr_letters), len(excel_letters)) >= 0.7:
+                    return True
     
     return False
 
@@ -445,9 +482,27 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                     sku_found = False
                     found_skus = []
                     
+                    # 预处理文本，修复常见OCR错误
+                    def preprocess_text_for_sku(text):
+                        # 修复常见的OCR错误
+                        fixes = {
+                            '048—OPAC': '048-OPAC', '048—TL': '048-TL', 
+                            '048-—OPAC': '048-OPAC', '048—-TL': '048-TL',
+                            '048-—TL': '048-TL', '048——OPAC': '048-OPAC',
+                            'ALN—': 'ALN-', 'ALN-—': 'ALN-', 'ALN——': 'ALN-',
+                            'W12KW': 'W12KWD', 'W6KW': 'W6KWD', 'W10KW': 'W10KWD',
+                            'W14KW': 'W14KWD', 'W8KW': 'W8KWD', 'W5KWD5': 'W5KWDS'
+                        }
+                        processed = text
+                        for wrong, correct in fixes.items():
+                            processed = processed.replace(wrong, correct)
+                        return processed
+                    
+                    processed_text = preprocess_text_for_sku(text.upper())
+                    
                     # 查找完整SKU格式
                     for pattern in algin_sku_patterns:
-                        matches = re.findall(pattern, text.upper())
+                        matches = re.findall(pattern, processed_text)
                         if matches:
                             for match in matches:
                                 if isinstance(match, tuple):
@@ -457,14 +512,23 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                 else:
                                     potential_sku = match
                                 
-                                # 更严格的SKU验证
+                                # 增强的SKU验证
                                 if (len(potential_sku) >= 5 and 
                                     not re.match(r'^\d{4}$', potential_sku) and
                                     not potential_sku.startswith('AGD') and
                                     # 确保包含至少一个字母和一个数字
                                     re.search(r'[A-Z]', potential_sku) and
                                     re.search(r'\d', potential_sku)):
-                                    found_skus.append(potential_sku)
+                                    
+                                    # 额外验证：确保是合理的ALGIN SKU格式
+                                    is_valid_algin = (
+                                        potential_sku.startswith(('048-', '014-', '050-', '060-', 'TFO1S')) or
+                                        re.match(r'\d{3}-[A-Z]{2,4}-', potential_sku) or
+                                        'OPAC' in potential_sku or 'TL-W' in potential_sku
+                                    )
+                                    
+                                    if is_valid_algin:
+                                        found_skus.append(potential_sku)
                     
                     # 选择最佳SKU
                     if found_skus:
@@ -480,7 +544,10 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                         sku_found = True
                     
                     if not sku_found:
-                        groups["algin_unscanned"].append((idx, "[ALGIN Label - 未扫描出来的label]", text[:200]))
+                        # 添加调试信息以了解为什么SKU识别失败
+                        debug_info = f"[ALGIN Label - 未扫描出来的label] 原始文本前100字符: {text[:100]}"
+                        print(f"⚠️  页面{idx+1} SKU识别失败: {text[:50]}...")
+                        groups["algin_unscanned"].append((idx, debug_info, text[:200]))
                     continue
                 
             # Look for 915 warehouse pattern
