@@ -120,7 +120,7 @@ def is_sku_match(ocr_sku, excel_sku):
     if ocr_norm == excel_norm:
         return True
     
-    # 3. 增强的OCR错误纠正（特别针对Render环境）
+    # 3. 增强的OCR错误纠正（特别针对OPAC数字识别错误）
     def fix_ocr_errors(text):
         corrections = {
             # 数字字母混淆
@@ -137,6 +137,11 @@ def is_sku_match(ocr_sku, excel_sku):
             'W14KWD': 'W14KWD', 'W14KW0': 'W14KWD', 'W14KW': 'W14KWD',
             'W8KWD': 'W8KWD', 'W8KW0': 'W8KWD', 'W8KW': 'W8KWD',
             'W5KWDS': 'W5KWDS', 'W5KWD5': 'W5KWDS', 'W5KWD': 'W5KWDS',
+            # 关键修复：OPAC数字识别错误
+            'OPAC-9H': 'OPAC-5H', 'OPAC-9B': 'OPAC-6',  # 9常被误识别成5或6
+            'OPAC-9': 'OPAC-5', 'OPAC-G': 'OPAC-6',
+            '048-OPAC-9H': '048-OPAC-5H', '048-OPAC-9B': '048-OPAC-6',
+            '048-OPAC-9': '048-OPAC-5', '048-OPAC-G': '048-OPAC-6',
         }
         
         fixed = text
@@ -491,7 +496,12 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                             '048-—TL': '048-TL', '048——OPAC': '048-OPAC',
                             'ALN—': 'ALN-', 'ALN-—': 'ALN-', 'ALN——': 'ALN-',
                             'W12KW': 'W12KWD', 'W6KW': 'W6KWD', 'W10KW': 'W10KWD',
-                            'W14KW': 'W14KWD', 'W8KW': 'W8KWD', 'W5KWD5': 'W5KWDS'
+                            'W14KW': 'W14KWD', 'W8KW': 'W8KWD', 'W5KWD5': 'W5KWDS',
+                            # 关键：OPAC数字纠错
+                            'OPAC-9H': 'OPAC-5H', 'OPAC-9B': 'OPAC-6', 'OPAC-9': 'OPAC-5',
+                            '048-OPAC-9H': '048-OPAC-5H', '048-OPAC-9B': '048-OPAC-6', 
+                            '048-OPAC-9': '048-OPAC-5', '048—OPAC-9H': '048-OPAC-5H',
+                            '048—OPAC-9B': '048-OPAC-6', '048—OPAC-9': '048-OPAC-5'
                         }
                         processed = text
                         for wrong, correct in fixes.items():
@@ -595,9 +605,11 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             if algin_sku_order:
                 for i, excel_sku in enumerate(algin_sku_order):
                     if is_sku_match(sku_string, excel_sku):
+                        print(f"🔗 SKU匹配成功: '{sku_string}' → '{excel_sku}' (位置{i})")
                         return (0, i, sku_string)
                 
                 # 在Excel中没找到，但是有SKU，放在Excel SKU后面
+                print(f"⚠️  SKU未匹配: '{sku_string}' 未在Excel列表中找到匹配")
                 return (1, sku_string)
             else:
                 # 没有Excel文件，使用智能排序
