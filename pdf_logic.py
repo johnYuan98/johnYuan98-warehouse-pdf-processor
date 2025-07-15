@@ -636,7 +636,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     for warehouse in ["915", "8090", "60"]:
         groups[warehouse].sort(key=get_warehouse_sort_key)
     
-    # Sort ALGIN labels by Excel SKU order
+    # Sort ALGIN labels by Excel SKU order - 优化版本
     def get_algin_sort_key(item):
         if len(item) >= 2:
             sku_string = item[1] if len(item) > 1 else ""
@@ -650,11 +650,13 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 for i, excel_sku in enumerate(algin_sku_order):
                     if is_sku_match(sku_string, excel_sku):
                         print(f"🎯 SKU匹配成功: {sku_string} -> {excel_sku} (位置{i})")
-                        return (0, i, sku_string)
+                        # 关键优化：只使用Excel位置作为排序键，不包含OCR变体
+                        # 这样相同Excel SKU的所有OCR变体都会被分组在一起
+                        return (0, i)
                 
                 # 在Excel中没找到，但是有SKU，放在Excel SKU后面
                 print(f"⚠️  SKU未找到匹配: {sku_string}")
-                return (1, sku_string)
+                return (1, hash(sku_string) % 1000)  # 使用hash保持稳定排序
             else:
                 # 没有Excel文件，使用智能排序
                 return (0,) + extract_sku_sort_key(sku_string)
