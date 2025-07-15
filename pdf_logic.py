@@ -192,10 +192,19 @@ def is_sku_match(ocr_sku, excel_sku):
                 '5': ['6', '9'],  # 5经常被误识别为6或9
             }
             
-            # 检查数字匹配
-            num_matches = (ocr_num == excel_num or 
-                          excel_num in num_corrections.get(ocr_num, []) or
-                          ocr_num in num_corrections.get(excel_num, []))
+            # 检查数字匹配 - 更严格，只允许明确的OCR错误
+            num_matches = (ocr_num == excel_num)
+            
+            # 只在明确的OCR错误情况下才进行纠错
+            if not num_matches:
+                # 9和6的混淆（最常见）
+                if (ocr_num == '9' and excel_num == '6') or (ocr_num == '6' and excel_num == '9'):
+                    num_matches = True
+                # 5和6的混淆（不太常见，需要更小心）
+                elif (ocr_num == '5' and excel_num == '6') or (ocr_num == '6' and excel_num == '5'):
+                    # 需要后缀也匹配才允许这种纠错
+                    if ocr_suffix == excel_suffix:
+                        num_matches = True
             
             # 后缀纠错
             suffix_corrections = {
@@ -510,6 +519,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                     
                     # 选择最佳SKU - 优先选择最完整最长的SKU
                     if found_skus:
+                        print(f"🔍 页面{idx+1} 找到候选SKU: {found_skus}")
+                        
                         def sku_priority(sku):
                             # 1. 优先选择完整的SKU（包含多个破折号的）
                             dash_count = sku.count('-') + sku.count('—')
@@ -523,10 +534,12 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                         
                         found_skus.sort(key=sku_priority)
                         best_sku = found_skus[0]
-                        print(f"🎯 页面{idx+1} 最佳SKU选择: {best_sku} (来自{found_skus})")
+                        print(f"🎯 页面{idx+1} 最佳SKU选择: {best_sku} (排序后{found_skus})")
                         
                         groups["algin_sorted"].append((idx, best_sku, text[:200]))
                         sku_found = True
+                    else:
+                        print(f"❌ 页面{idx+1} 没有找到有效SKU")
                     
                     if not sku_found:
                         groups["algin_unscanned"].append((idx, "[ALGIN Label - 未扫描出来的label]", text[:200]))
