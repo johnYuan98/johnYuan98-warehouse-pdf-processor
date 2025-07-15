@@ -217,7 +217,7 @@ def is_sku_match_old(ocr_sku, excel_sku):
 
 def load_algin_sku_order(excel_path="uploads/ALGIN.xlsx"):
     """加载ALGIN SKU的正确排序顺序"""
-    # 使用用户提供的完整正确SKU顺序
+    # 使用用户提供的完整正确SKU顺序（2025年7月15日更新）
     correct_order = [
         "014-HG-17061-A", "014-HG-17061-B", "014-HG-20064-BRO", "014-HG-30343-B",
         "014-HG-31803-DG", "014-HG-31804-LB", "014-HG-31804-NA", "014-HG-31901-GY",
