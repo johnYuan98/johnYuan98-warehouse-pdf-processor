@@ -12,8 +12,8 @@ from pdf_logic import process_pdf
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
 
-# Fix for time variable conflict issue - version 2
-print("🔧 Starting warehouse PDF processor with time conflict fix v2", flush=True)
+# Render环境配置
+print("🔧 Starting warehouse PDF processor for Render deployment", flush=True)
 
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf'}
@@ -65,29 +65,6 @@ def store_temp_files(session_id, file_paths):
         'files': file_paths,
         'timestamp': time.time()
     }
-    
-    # 清理旧的temp_output目录
-    cleanup_old_temp_dirs()
-
-def cleanup_old_temp_dirs():
-    """清理超过2小时的临时输出目录"""
-    try:
-        temp_output_dir = os.path.join(os.getcwd(), 'temp_output')
-        if not os.path.exists(temp_output_dir):
-            return
-            
-        current_time = time.time()
-        for item in os.listdir(temp_output_dir):
-            item_path = os.path.join(temp_output_dir, item)
-            if os.path.isdir(item_path):
-                # 检查目录创建时间
-                dir_time = os.path.getctime(item_path)
-                if current_time - dir_time > 7200:  # 2小时 = 7200秒
-                    import shutil
-                    shutil.rmtree(item_path)
-                    print(f"🗑️ 清理过期目录: {item_path}", flush=True)
-    except Exception as e:
-        print(f"⚠️ 清理临时目录失败: {str(e)}", flush=True)
 
 def get_recent_results():
     """获取当前session的处理结果"""
@@ -129,7 +106,6 @@ def index():
 @app.route('/', methods=['POST'])
 def upload_warehouse():
     """处理仓库分拣功能"""
-    print("🔄 收到仓库分拣请求", flush=True)
     if 'pdf_file' not in request.files:
         flash('No file selected')
         return redirect(url_for('index'))
@@ -148,14 +124,11 @@ def upload_warehouse():
         file.save(filepath)
         
         try:
-            print(f"📁 创建临时目录处理文件: {filename}", flush=True)
-            # 使用应用内的输出目录，更可靠
-            new_timestamp = int(time.time())
-            temp_dir = os.path.join(os.getcwd(), 'temp_output', f"warehouse_{new_timestamp}")
-            os.makedirs(temp_dir, exist_ok=True)
-            print(f"📂 临时目录: {temp_dir}", flush=True)
+            print(f"📁 Processing warehouse file: {filename}", flush=True)
+            # 使用临时目录
+            temp_dir = tempfile.mkdtemp(prefix="warehouse_")
             results = process_pdf(filepath, temp_dir, mode="warehouse")
-            print(f"✅ 处理完成，生成了 {len(results)} 个文件", flush=True)
+            print(f"✅ Warehouse processing completed: {len(results)} files generated", flush=True)
             
             # 存储临时文件信息
             session_id = get_session_id()
@@ -164,20 +137,11 @@ def upload_warehouse():
             # 计划清理（1小时后）
             schedule_cleanup(session_id, TEMP_CLEANUP_DELAY)
             
-            # 转换绝对路径为相对路径用于下载链接
-            relative_results = []
-            cwd = os.getcwd()
-            for result in results:
-                if result.startswith(cwd):
-                    relative_path = os.path.relpath(result, cwd)
-                    relative_results.append(relative_path)
-                else:
-                    relative_results.append(result)
-            
             flash(f'Successfully processed! Generated {len(results)} files.')
-            return render_template('index.html', output_files=relative_results)
+            return render_template('index.html', output_files=results)
             
         except Exception as e:
+            print(f"❌ Error processing warehouse file: {str(e)}", flush=True)
             flash(f'Error processing file: {str(e)}')
             return redirect(url_for('index'))
     
@@ -187,7 +151,6 @@ def upload_warehouse():
 @app.route('/sort_labels', methods=['POST'])
 def sort_labels():
     """处理ALGIN客户Label排序功能"""
-    print("🔄 收到ALGIN排序请求", flush=True)
     if 'pdf_file' not in request.files:
         flash('No file selected')
         return redirect(url_for('index'))
@@ -206,14 +169,11 @@ def sort_labels():
         file.save(filepath)
         
         try:
-            print(f"📁 创建ALGIN临时目录处理文件: {filename}", flush=True)
-            # 使用应用内的输出目录，更可靠
-            new_timestamp = int(time.time())
-            temp_dir = os.path.join(os.getcwd(), 'temp_output', f"algin_{new_timestamp}")
-            os.makedirs(temp_dir, exist_ok=True)
-            print(f"📂 ALGIN临时目录: {temp_dir}", flush=True)
+            print(f"📁 Processing ALGIN file: {filename}", flush=True)
+            # 使用临时目录
+            temp_dir = tempfile.mkdtemp(prefix="algin_")
             results = process_pdf(filepath, temp_dir, mode="algin")
-            print(f"✅ ALGIN处理完成，生成了 {len(results)} 个文件", flush=True)
+            print(f"✅ ALGIN processing completed: {len(results)} files generated", flush=True)
             
             # 存储临时文件信息
             session_id = get_session_id()
@@ -225,16 +185,11 @@ def sort_labels():
             # 对于ALGIN排序，我们只返回第一个结果作为sorted_file
             sorted_file = results[0] if results else None
             
-            # 转换绝对路径为相对路径用于下载链接
-            if sorted_file:
-                cwd = os.getcwd()
-                if sorted_file.startswith(cwd):
-                    sorted_file = os.path.relpath(sorted_file, cwd)
-            
             flash(f'Successfully processed! Generated {len(results)} files.')
             return render_template('index.html', sorted_file=sorted_file)
             
         except Exception as e:
+            print(f"❌ Error processing ALGIN file: {str(e)}", flush=True)
             flash(f'Error processing file: {str(e)}')
             return redirect(url_for('index'))
     
@@ -347,76 +302,18 @@ def clear_results():
 def download_file(filename):
     """下载文件，支持临时文件自动清理"""
     try:
-        print(f"📥 下载请求: {filename}", flush=True)
-        
-        # 处理文件路径 - 统一处理相对路径
-        if not os.path.isabs(filename):
-            # 相对路径直接在当前工作目录中查找
-            abs_filename = os.path.join(os.getcwd(), filename)
-            print(f"🔄 相对路径转绝对路径: {abs_filename}", flush=True)
-        else:
-            # 绝对路径直接使用
-            abs_filename = filename
-            print(f"🔄 使用绝对路径: {abs_filename}", flush=True)
+        print(f"📥 Download request: {filename}", flush=True)
         
         # 检查文件是否存在
-        if not os.path.exists(abs_filename):
-            print(f"❌ 文件不存在: {abs_filename}", flush=True)
-            print(f"📂 当前工作目录: {os.getcwd()}", flush=True)
-            
-            # 尝试在临时目录中查找
-            import glob
-            # 搜索应用内的temp_output目录和系统/tmp目录
-            temp_files = (
-                glob.glob(f"{os.getcwd()}/temp_output/*/*.pdf") + 
-                glob.glob(f"/tmp/*/*.pdf")
-            )
-            print(f"🔍 找到的临时文件: {temp_files}", flush=True)
-            
-            # 查找匹配的文件
-            target_filename = os.path.basename(filename)
-            print(f"🎯 查找目标文件名: {target_filename}", flush=True)
-            
-            matching_files = [f for f in temp_files if os.path.basename(f) == target_filename]
-            print(f"✅ 匹配的文件: {matching_files}", flush=True)
-            
-            if matching_files:
-                # 使用找到的第一个匹配文件
-                abs_filename = matching_files[0]
-                print(f"🔄 使用找到的文件: {abs_filename}", flush=True)
-            else:
-                flash('File not found')
-                return redirect(url_for('index'))
+        if not os.path.exists(filename):
+            print(f"❌ File not found: {filename}", flush=True)
+            flash('File not found')
+            return redirect(url_for('index'))
         
-        print(f"✅ 开始下载文件: {abs_filename}", flush=True)
-        
-        # 获取文件名
-        filename = os.path.basename(abs_filename)
-        print(f"📝 下载文件名: {filename}", flush=True)
-        
-        # 发送文件，添加强制下载头
-        response = send_file(
-            abs_filename, 
-            as_attachment=True,
-            download_name=filename,
-            mimetype='application/pdf'
-        )
-        
-        # 处理中文文件名的编码问题
-        import urllib.parse
-        encoded_filename = urllib.parse.quote(filename, safe='')
-        
-        # 添加强制下载的响应头
-        response.headers['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{encoded_filename}'
-        response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
-        
-        print(f"🔄 设置响应头: Content-Disposition=attachment; filename*=UTF-8''{encoded_filename}", flush=True)
-        return response
+        print(f"✅ Sending file: {filename}", flush=True)
+        return send_file(filename, as_attachment=True)
     except Exception as e:
-        print(f"❌ 下载错误: {str(e)}", flush=True)
+        print(f"❌ Download error: {str(e)}", flush=True)
         flash(f'Download error: {str(e)}')
         return redirect(url_for('index'))
 
@@ -427,70 +324,12 @@ def clear_temp_files():
     cleanup_temp_files(session_id)
     return jsonify({'success': True, 'message': 'Temporary files cleared'})
 
-@app.route('/force_download/<path:filename>')
-def force_download_file(filename):
-    """强制下载文件的备选路由"""
-    try:
-        print(f"🔥 强制下载请求: {filename}", flush=True)
-        
-        # 处理文件路径 - 统一处理相对路径
-        if not os.path.isabs(filename):
-            # 相对路径直接在当前工作目录中查找
-            abs_filename = os.path.join(os.getcwd(), filename)
-        else:
-            # 绝对路径直接使用
-            abs_filename = filename
-            
-        print(f"🔥 强制下载路径: {abs_filename}", flush=True)
-        
-        if not os.path.exists(abs_filename):
-            # 搜索临时文件
-            import glob
-            temp_files = glob.glob(f"{os.getcwd()}/temp_output/*/*.pdf")
-            target_filename = os.path.basename(filename)
-            matching_files = [f for f in temp_files if os.path.basename(f) == target_filename]
-            
-            if matching_files:
-                abs_filename = matching_files[0]
-                print(f"🔥 找到文件: {abs_filename}", flush=True)
-            else:
-                return "File not found", 404
-        
-        # 读取文件内容并直接返回
-        with open(abs_filename, 'rb') as f:
-            file_data = f.read()
-        
-        from flask import Response
-        import urllib.parse
-        filename_only = os.path.basename(abs_filename)
-        encoded_filename = urllib.parse.quote(filename_only, safe='')
-        
-        response = Response(
-            file_data,
-            mimetype='application/pdf',
-            headers={
-                'Content-Disposition': f'attachment; filename*=UTF-8\'\'{encoded_filename}',
-                'Content-Type': 'application/pdf',
-                'Content-Length': str(len(file_data)),
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-            }
-        )
-        
-        print(f"🔥 强制下载响应已创建: {filename_only}", flush=True)
-        return response
-        
-    except Exception as e:
-        print(f"🔥 强制下载错误: {str(e)}", flush=True)
-        return f"Download error: {str(e)}", 500
-
 if __name__ == '__main__':
-    print("🚀 启动仓库PDF处理系统...", flush=True)
-    print(f"📂 当前工作目录: {os.getcwd()}", flush=True)
+    print("🚀 Starting warehouse PDF processor...", flush=True)
+    print(f"📂 Current working directory: {os.getcwd()}", flush=True)
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV') != 'production'
-    print(f"🌐 服务启动在端口: {port}", flush=True)
-    print(f"🔧 调试模式: {debug_mode}", flush=True)
+    print(f"🌐 Server starting on port: {port}", flush=True)
+    print(f"🔧 Debug mode: {debug_mode}", flush=True)
     app.run(host='0.0.0.0', port=port, debug=debug_mode)

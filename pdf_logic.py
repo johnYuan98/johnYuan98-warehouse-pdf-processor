@@ -21,6 +21,7 @@ WAREHOUSE_PREFIXES = {
     "60": ["GA", "GB", "GC"]
 }
 
+# 动态设置Tesseract路径以适配不同环境
 import platform
 import shutil
 
@@ -53,7 +54,7 @@ def setup_tesseract():
 # 设置Tesseract命令路径
 import sys
 tesseract_path = setup_tesseract()
-if tesseract_path:
+if tesseract_path and OCR_AVAILABLE:
     pytesseract.pytesseract.tesseract_cmd = tesseract_path
     print(f"✅ Tesseract路径设置为: {tesseract_path}", flush=True)
     sys.stdout.flush()
@@ -97,14 +98,7 @@ def extract_sku_sort_key(sku_text):
     # 如果没有匹配任何模式，使用字母排序
     return (9999, sku_text.upper(), 0)
 
-# 导入改进的SKU匹配函数
-from improved_sku_match import is_sku_match_improved
-
 def is_sku_match(ocr_sku, excel_sku):
-    """使用改进的SKU匹配逻辑"""
-    return is_sku_match_improved(ocr_sku, excel_sku)
-
-def is_sku_match_old(ocr_sku, excel_sku):
     """
     改进的SKU匹配逻辑，处理OCR扫描结果与正确SKU列表的差异
     """
@@ -126,33 +120,23 @@ def is_sku_match_old(ocr_sku, excel_sku):
     if ocr_norm == excel_norm:
         return True
     
-    # 3. 处理OCR常见错误 - 增强版本
-    # 首先尝试多种常见的OCR错误纠正
-    correction_pairs = [
-        ('9', '6'), ('6', '9'),  # 6和9混淆
-        ('0', 'O'), ('O', '0'),  # 0和O混淆
-        ('1', 'I'), ('I', '1'),  # 1和I混淆
-        ('5', 'S'), ('S', '5'),  # 5和S混淆
-        ('8', 'B'), ('B', '8'),  # 8和B混淆
-        ('G', '6'), ('6', 'G'),  # G和6混淆
-        ('D', 'B'), ('B', 'D'),  # D和B混淆
-        ('Q', 'O'), ('O', 'Q'),  # Q和O混淆
-        ('Z', '2'), ('2', 'Z'),  # Z和2混淆
-    ]
+    # 3. 处理OCR常见错误
+    ocr_corrections = {
+        '0': 'O', 'O': '0',  # 数字0和字母O
+        '1': 'I', 'I': '1',  # 数字1和字母I
+        '5': 'S', 'S': '5',  # 数字5和字母S
+        '8': 'B', 'B': '8',  # 数字8和字母B
+        '9': '6', '6': '9',  # 常见的9和6混淆
+        'G': '6', '6': 'G',  # G和6混淆
+    }
     
-    # 尝试不同的纠错组合
-    for wrong, correct in correction_pairs:
-        ocr_corrected = ocr_norm.replace(wrong, correct)
-        if ocr_corrected == excel_norm:
-            return True
-        
-        # 也尝试多重替换
-        ocr_multi = ocr_corrected
-        for w2, c2 in correction_pairs:
-            if w2 != wrong:  # 避免重复替换
-                ocr_multi = ocr_multi.replace(w2, c2)
-                if ocr_multi == excel_norm:
-                    return True
+    # 生成OCR纠错版本
+    ocr_corrected = ocr_norm
+    for wrong, correct in ocr_corrections.items():
+        ocr_corrected = ocr_corrected.replace(wrong, correct)
+    
+    if ocr_corrected == excel_norm:
+        return True
     
     # 4. 核心部分匹配（去除特殊字符）
     def extract_core_sku(sku):
@@ -180,33 +164,17 @@ def is_sku_match_old(ocr_sku, excel_sku):
             if abs(len(ocr_norm) - len(excel_norm)) <= 2:
                 return True
     
-    # 7. 特殊处理：OPAC系列的常见OCR错误（增强版）
+    # 7. 特殊处理：OPAC系列的常见OCR错误
     if 'OPAC' in ocr_norm and 'OPAC' in excel_norm:
-        # 提取完整的OPAC格式 - 支持更多变体
-        ocr_opac_match = re.search(r'(048-?)?OPAC-?(\d+)([A-Z]*)', ocr_norm)
-        excel_opac_match = re.search(r'(048-?)?OPAC-?(\d+)([A-Z]*)', excel_norm)
-        
-        if ocr_opac_match and excel_opac_match:
-            ocr_num = ocr_opac_match.group(2)
-            ocr_suffix = ocr_opac_match.group(3)
-            excel_num = excel_opac_match.group(2)
-            excel_suffix = excel_opac_match.group(3)
-            
-            # 数字纠错映射
-            num_corrections = {
-                '9': ['6', '5'],  # 9经常被误识别为6或5
-                '6': ['9', '5'],  # 6经常被误识别为9或5
-                '5': ['6', '9'],  # 5经常被误识别为6或9
-            }
-            
-            # 检查数字匹配 - 只在数字完全相同时匹配，不要纠错
-            num_matches = (ocr_num == excel_num)
-            
-            # 后缀匹配 - 只在完全相同时匹配，不要纠错
-            suffix_matches = (ocr_suffix == excel_suffix)
-            
-            if num_matches and suffix_matches:
-                print(f"🔧 OPAC纠错匹配: {ocr_sku} -> {excel_sku}")
+        # 提取数字部分
+        ocr_opac_num = re.search(r'OPAC-?(\d+)', ocr_norm)
+        excel_opac_num = re.search(r'OPAC-?(\d+)', excel_norm)
+        if ocr_opac_num and excel_opac_num:
+            ocr_num = ocr_opac_num.group(1)
+            excel_num = excel_opac_num.group(1)
+            # 允许5和9的混淆，6和9的混淆等
+            if (ocr_num == '9' and excel_num == '5') or (ocr_num == '5' and excel_num == '9') or \
+               (ocr_num == '6' and excel_num == '9') or (ocr_num == '9' and excel_num == '6'):
                 return True
     
     # 8. TFO1S系列的常见错误
@@ -217,7 +185,7 @@ def is_sku_match_old(ocr_sku, excel_sku):
 
 def load_algin_sku_order(excel_path="uploads/ALGIN.xlsx"):
     """加载ALGIN SKU的正确排序顺序"""
-    # 使用用户提供的完整正确SKU顺序（2025年7月15日更新）
+    # 使用硬编码的正确SKU顺序（用户提供的准确顺序）
     correct_order = [
         "014-HG-17061-A", "014-HG-17061-B", "014-HG-20064-BRO", "014-HG-30343-B",
         "014-HG-31803-DG", "014-HG-31804-LB", "014-HG-31804-NA", "014-HG-31901-GY",
@@ -237,8 +205,9 @@ def load_algin_sku_order(excel_path="uploads/ALGIN.xlsx"):
         "060-ROT-15V2-GN", "060-ROT-15V2-RD", "060-ROT-22L-BK", "TFO1S-BK"
     ]
     
-    print(f"✅ 使用正确的SKU排序顺序")
-    print(f"📊 包含 {len(correct_order)} 个SKU的正确顺序")
+    print(f"✅ 使用正确的SKU排序顺序", flush=True)
+    print(f"📊 包含 {len(correct_order)} 个SKU的正确顺序", flush=True)
+    sys.stdout.flush()
     
     return correct_order
 
@@ -324,11 +293,13 @@ def get_warehouse_sort_key(item):
     return (999, 999, 999)
 
 def process_pdf(input_pdf, output_dir, mode="warehouse"):
-    print(f"🔄 开始处理PDF: {os.path.basename(input_pdf)}")
+    print(f"🔄 开始处理PDF: {os.path.basename(input_pdf)}", flush=True)
+    sys.stdout.flush()
     
     reader = PdfReader(input_pdf)
     total_pages = len(reader.pages)
-    print(f"📄 总页数: {total_pages}")
+    print(f"📄 总页数: {total_pages}", flush=True)
+    sys.stdout.flush()
     
     # 根据模式决定是否加载ALGIN SKU顺序
     if mode == "algin":
@@ -351,7 +322,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             
             # 每处理10页显示一次进度
             if processed_pages % 10 == 0:
-                print(f"📊 处理进度: {processed_pages}/{total_pages} ({processed_pages/total_pages*100:.1f}%)")
+                print(f"📊 处理进度: {processed_pages}/{total_pages} ({processed_pages/total_pages*100:.1f}%)", flush=True)
+                sys.stdout.flush()
             
             text = page.extract_text() or ""
             
@@ -423,7 +395,6 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             if mode == "algin" and is_unscanned_sku_label(text):
                 sort_key = extract_sort_key_for_unscanned(text)
                 groups["unscanned_sku_labels"].append((idx, sort_key, text[:100]))
-                print(f"📋 识别为总结页面: 页面{idx+1}")
                 continue
             
             # 根据模式决定处理逻辑
@@ -450,69 +421,37 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 is_algin_label = not is_definitely_not_algin
                 
                 if is_algin_label:
-                    # 先进行OCR文本清理和预处理
-                    def clean_ocr_text(text):
-                        """清理OCR文本中的常见错误"""
-                        cleaned = text.upper()
-                        
-                        # OCR常见错误纠正
-                        replacements = {
-                            '048—OPAC-': '048-OPAC-',
-                            '048—OPAC—': '048-OPAC-',
-                            '048-—OPAC-': '048-OPAC-',
-                            '048—OPA': '048-OPAC-',
-                            '048-—OP': '048-OPAC-',
-                            '048—TL—': '048-TL-',
-                            '048-—TL—': '048-TL-',
-                            '014—HG—': '014-HG-',
-                            '014-—HG—': '014-HG-',
-                            'OPAC-9': 'OPAC-6',  # OCR常把6识别为9
-                            'OPAC-9B': 'OPAC-6',
-                            'OPAC-9H': 'OPAC-6H',
-                            'OPAC-9HB': 'OPAC-6H',
-                            'TFO1S—': 'TFO1S-',
-                            'W5KWDS': 'W8KWD',  # 修正常见OCR错误
-                        }
-                        
-                        for wrong, correct in replacements.items():
-                            cleaned = cleaned.replace(wrong, correct)
-                        
-                        return cleaned
-                    
-                    cleaned_text = clean_ocr_text(text)
-                    print(f"🧹 页面{idx+1} 清理后文本: {cleaned_text[:100]}...")
-                    
                     # 使用智能SKU识别和排序逻辑 - 扩展模式匹配
                     algin_sku_patterns = [
-                        # 048系列OPAC和TL格式 - 最高优先级
-                        r'\b(048)-(OPAC)-(\d+[A-Z]?)\b',                           # 048-OPAC-5, 048-OPAC-6H
-                        r'\b(048)-(TL)-(W\d+[A-Z]+)\b',                           # 048-TL-W6KWD, 048-TL-W10KWD
-                        
-                        # TFO1S系列
-                        r'\b(TFO1S)-(BK)\b',                                       # TFO1S-BK
+                        # 标准ALGIN SKU格式
+                        r'\b(\d{3})-([A-Z]{2,4})-([A-Z0-9]+)\b',                    # 048-OPAC-5, 048-TL-W6KWD
+                        r'\b(\d{3})-([A-Z]{2,4})—(\d+)-?([A-Z]*)\b',                # 048-OPAC—5, 014-HG—17061-B  
+                        r'\b([A-Z0-9]{3,5})-([A-Z]{2})\b',                          # TFO1S-BK
+                        r'\b([A-Z0-9]{3,5})—([A-Z]{2})\b',                          # TFO1S—BK
+                        r'\b(\d{3})-([A-Z]{2})—([A-Z0-9]+)\b',                      # 048-TL—W6KWD
                         
                         # 014-HG系列格式
-                        r'\b(014)-(HG)-(\d{5})-(\d[A-Z]+)\b',                     # 014-HG-17061-A
-                        r'\b(014)-(HG)-(\d{5})-(\d[A-Z]{2,3})\b',                 # 014-HG-17061-BRO
-                        r'\b(014)-(HG)-(\d{5})\b',                                # 014-HG-41023
+                        r'\b(014)-([A-Z]{2})-(\d{5})-([A-Z]+)\b',                   # 014-HG-17061-A
+                        r'\b(014)-([A-Z]{2})-(\d{5})-([A-Z]{2,3})\b',               # 014-HG-17061-BRO
+                        r'\b(014)-([A-Z]{2})-(\d{5})\b',                            # 014-HG-41023
                         
                         # 050系列格式
-                        r'\b(050)-(HA|LMT)-(\d{2,5})-?([A-Z]*)\b',                # 050-HA-50028, 050-LMT-23-GY
+                        r'\b(050)-([A-Z]{2,3})-(\d{2,5})-?([A-Z]*)\b',              # 050-HA-50028, 050-LMT-23-GY
                         
                         # 060系列格式
-                        r'\b(060)-(ROT)-(\d{2,3}[A-Z]*)-(\d[A-Z]{2,3})\b',        # 060-ROT-11L-WH, 060-ROT-15V2-DG
+                        r'\b(060)-([A-Z]{3})-(\d{2,3}[A-Z]*)-([A-Z]{2,3})\b',       # 060-ROT-11L-WH, 060-ROT-15V2-DG
                         
-                        # 备用模式 - 较低优先级
-                        r'\b(\d{3})-(\d[A-Z]{2,4})-(\d[A-Z0-9]+)\b',              # 通用数字-字母-字母数字格式
-                        r'\b([A-Z0-9]{3,6})-(\d[A-Z0-9]{2,6})\b',                 # 通用字母数字-字母数字格式
+                        # 通用灵活格式（最后匹配）
+                        r'\b(\d{3})-([A-Z]{2,4})-([A-Z0-9-]+)\b',                   # 通用数字-字母-字母数字格式
+                        r'\b([A-Z0-9]{3,6})-([A-Z0-9]{2,6})\b',                     # 通用字母数字-字母数字格式
                     ]
                     
                     sku_found = False
                     found_skus = []
                     
-                    # 查找完整SKU格式 - 在清理后的文本中搜索
+                    # 查找完整SKU格式
                     for pattern in algin_sku_patterns:
-                        matches = re.findall(pattern, cleaned_text)
+                        matches = re.findall(pattern, text.upper())
                         if matches:
                             for match in matches:
                                 if isinstance(match, tuple):
@@ -528,65 +467,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                     not potential_sku.startswith('AGD') and
                                     # 确保包含至少一个字母和一个数字
                                     re.search(r'[A-Z]', potential_sku) and
-                                    re.search(r'\d', potential_sku) and
-                                    # 过滤掉明显错误的SKU
-                                    not potential_sku.startswith('OPAC-') and  # 应该是048-OPAC-
-                                    not potential_sku.endswith('HB')):         # 避免6HB这样的错误
+                                    re.search(r'\d', potential_sku)):
                                     found_skus.append(potential_sku)
-                                    print(f"✅ 页面{idx+1} 识别SKU: {potential_sku}")
-                    
-                    # 如果没找到标准格式，尝试部分识别和重建SKU
-                    if not found_skus:
-                        # 尝试识别部分SKU信息并重建
-                        if 'OPAC' in cleaned_text and '048' in cleaned_text:
-                            # 尝试重建048-OPAC格式 - 改进版本
-                            opac_patterns = [
-                                r'048.{0,3}OPAC.{0,3}(\d+[A-Z]?)',  # 048-OPAC-6H
-                                r'OPAC.{0,3}(\d+[A-Z]?)',           # OPAC-6H
-                            ]
-                            for pattern in opac_patterns:
-                                matches = re.findall(pattern, cleaned_text)
-                                for num in matches:
-                                    # 修正常见的OCR错误
-                                    if num.endswith('B'):  # 6B -> 6
-                                        num = num[:-1]
-                                    elif num.endswith('9'):  # 可能是6被识别成9
-                                        num = num[:-1] + '6'
-                                    
-                                    rebuilt_sku = f"048-OPAC-{num}"
-                                    found_skus.append(rebuilt_sku)
-                                    print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
-                                    break
-                        
-                        elif 'TL' in cleaned_text and '048' in cleaned_text and 'W' in cleaned_text:
-                            # 尝试重建048-TL格式
-                            tl_patterns = re.findall(r'(W\d+[A-Z]+)', cleaned_text)
-                            for pattern in tl_patterns:
-                                if len(pattern) >= 4:  # W6KWD, W10KWD等
-                                    rebuilt_sku = f"048-TL-{pattern}"
-                                    found_skus.append(rebuilt_sku)
-                                    print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
-                        
-                        elif 'TFO1S' in cleaned_text and 'BK' in cleaned_text:
-                            # TFO1S-BK格式
-                            found_skus.append("TFO1S-BK")
-                            print(f"🔧 页面{idx+1} 重建SKU: TFO1S-BK")
-                        
-                        elif '014' in cleaned_text and 'HG' in cleaned_text:
-                            # 尝试重建014-HG格式 - 改进版本
-                            hg_patterns = [
-                                r'014.{0,3}HG.{0,3}(\d{5}).{0,3}([A-Z]{2,3})',  # 014-HG-41896-WH
-                                r'HG.{0,3}(\d{5}).{0,3}([A-Z]{2,3})',           # HG-41896-WH
-                                r'(\d{5}).{0,3}([A-Z]{2,3})',                   # 41896-WH
-                            ]
-                            for pattern in hg_patterns:
-                                matches = re.findall(pattern, cleaned_text)
-                                for num, suffix in matches:
-                                    if len(num) == 5:  # 确保是5位数字
-                                        rebuilt_sku = f"014-HG-{num}-{suffix}"
-                                        found_skus.append(rebuilt_sku)
-                                        print(f"🔧 页面{idx+1} 重建SKU: {rebuilt_sku}")
-                                        break
                     
                     # 选择最佳SKU
                     if found_skus:
@@ -631,22 +513,14 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             groups["unknown"].append((idx, text[:100]))
     
     # 显示最终处理进度
-    print(f"📊 处理完成: {processed_pages}/{total_pages} (100.0%)")
-    
-    # 验证所有页面都被处理了
-    if len(all_processed_pages) != total_pages:
-        print(f"⚠️  警告: 处理的页面数({len(all_processed_pages)})与总页数({total_pages})不匹配")
-        missing_pages = set(range(total_pages)) - all_processed_pages
-        if missing_pages:
-            print(f"❌ 缺失页面: {sorted(missing_pages)}")
-    else:
-        print(f"✅ 所有 {total_pages} 页都已正确处理")
+    print(f"📊 处理完成: {processed_pages}/{total_pages} (100.0%)", flush=True)
+    sys.stdout.flush()
     
     # Sort each warehouse group
     for warehouse in ["915", "8090", "60"]:
         groups[warehouse].sort(key=get_warehouse_sort_key)
     
-    # Sort ALGIN labels by Excel SKU order - 修复版本
+    # Sort ALGIN labels by Excel SKU order
     def get_algin_sort_key(item):
         if len(item) >= 2:
             sku_string = item[1] if len(item) > 1 else ""
@@ -670,43 +544,20 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
         return (999, 999)
     
     if mode == "algin":
-        # 调试：显示所有识别到的SKU
-        print(f"🔍 调试 - 识别到的SKU列表:")
-        for i, item in enumerate(groups["algin_sorted"]):
-            sku = item[1] if len(item) > 1 else "未知"
-            print(f"   {i+1}. {sku}")
-        
         groups["algin_sorted"].sort(key=get_algin_sort_key)
-        
-        # 调试：显示排序后的SKU分组
-        print(f"🔍 调试 - 排序后的SKU分组列表:")
-        current_sku = None
-        group_count = 0
-        for i, item in enumerate(groups["algin_sorted"]):
-            sku = item[1] if len(item) > 1 else "未知"
-            page_num = item[0] if len(item) > 0 else "未知"
-            sort_key = get_algin_sort_key(item)
-            
-            # 检查是否是新的SKU组
-            if current_sku != sku:
-                current_sku = sku
-                group_count += 1
-                print(f"   组{group_count}: {sku}")
-            
-            print(f"      页面{page_num} (排序键: {sort_key})")
     
     # 显示处理统计
-    print(f"\n📊 处理完成统计:")
-    print(f"   总页数: {total_pages}")
+    print(f"\n📊 处理完成统计:", flush=True)
+    print(f"   总页数: {total_pages}", flush=True)
     if mode == "algin":
-        print(f"   ALGIN已排序: {len(groups['algin_sorted'])}")
-        print(f"   ALGIN未扫描: {len(groups['algin_unscanned'])}")
-        print(f"   未扫描SKU标签: {len(groups['unscanned_sku_labels'])}")
-    print(f"   915仓库: {len(groups['915'])}")
-    print(f"   8090仓库: {len(groups['8090'])}")
-    print(f"   60仓库: {len(groups['60'])}")
-    print(f"   未知类型: {len(groups['unknown'])}")
-    print(f"   空白页: {len(groups['blank'])}")
+        print(f"   ALGIN已排序: {len(groups['algin_sorted'])}", flush=True)
+        print(f"   ALGIN未扫描: {len(groups['algin_unscanned'])}", flush=True)
+    print(f"   915仓库: {len(groups['915'])}", flush=True)
+    print(f"   8090仓库: {len(groups['8090'])}", flush=True)
+    print(f"   60仓库: {len(groups['60'])}", flush=True)
+    print(f"   未知类型: {len(groups['unknown'])}", flush=True)
+    print(f"   空白页: {len(groups['blank'])}", flush=True)
+    sys.stdout.flush()
     
     outputs = []
     os.makedirs(output_dir, exist_ok=True)
@@ -736,27 +587,19 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 else:
                     algin_with_sku.append(item)
             
-            # 输出所有ALGIN页面（有SKU的优先排序，然后是无SKU、未扫描和总结页面）
-            unscanned_summary_pages = groups.get("unscanned_sku_labels", [])
-            all_pages = algin_with_sku + algin_without_sku + algin_unsorted_pages + unscanned_summary_pages
+            # 只输出有SKU且排序好的ALGIN页面
+            all_pages = algin_with_sku
             
             if not all_pages:
-                print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面")
+                print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面", flush=True)
                 all_pages = algin_sorted_pages[:150] if len(algin_sorted_pages) > 150 else algin_sorted_pages
                 if not all_pages:
-                    print(f"❌ 错误: 没有找到任何ALGIN页面！")
+                    print(f"❌ 错误: 没有找到任何ALGIN页面！", flush=True)
                     continue
-            
-            print(f"📊 ALGIN页面统计: 有效SKU页面({len(algin_with_sku)}) / 总页数({len(algin_with_sku) + len(algin_without_sku) + len(algin_unsorted_pages) + len(unscanned_summary_pages)})")
-            print(f"🔍 过滤掉: 无SKU({len(algin_without_sku)}) + 未扫描({len(algin_unsorted_pages)}) + 总结({len(unscanned_summary_pages)}) 页")
                 
-            # 输出所有ALGIN页面（有SKU的优先排序，然后是无SKU、未扫描和总结页面）
             writer = PdfWriter()
-            print(f"🔍 最终输出页面顺序:")
-            for i, item in enumerate(all_pages):
+            for item in all_pages:
                 page_idx = item[0]
-                sku_string = item[1] if len(item) > 1 else "未知"
-                print(f"   第{i+1}页输出: 原页面{item[0]+1} -> SKU: {sku_string}")
                 writer.add_page(reader.pages[page_idx])
             
             output_name = "ALGIN_Label_已排序.pdf"
@@ -764,13 +607,13 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             with open(output_path, "wb") as f:
                 writer.write(f)
             outputs.append(output_path)
-            print(f"✅ 生成文件: {output_name} ({len(all_pages)} 页)")
-            print(f"📁 文件完整路径: {output_path}", flush=True)
+            print(f"✅ 生成文件: {output_name} ({len(all_pages)} 页)", flush=True)
+            sys.stdout.flush()
             continue
             
         pages = groups[warehouse]
         if not pages:
-            print(f"⚠️  {warehouse} 组为空，跳过")
+            print(f"⚠️  {warehouse} 组为空，跳过", flush=True)
             continue
             
         writer = PdfWriter()
@@ -789,8 +632,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             
             if algin_count > len(pages) * 0.5:  # 如果超过50%的页面包含ALGIN标签
                 output_name = "ALGIN标签页面_请使用ALGIN排序功能.pdf"
-                print(f"🔍 检测到 {algin_count}/{len(pages)} 页包含ALGIN标签")
-                print(f"💡 建议：请使用'ALGIN客户的Label排序'功能处理此文件")
+                print(f"🔍 检测到 {algin_count}/{len(pages)} 页包含ALGIN标签", flush=True)
+                print(f"💡 建议：请使用'ALGIN客户的Label排序'功能处理此文件", flush=True)
             else:
                 output_name = "未找到仓库.pdf"
         elif warehouse == "blank":
@@ -802,6 +645,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
         with open(output_path, "wb") as f:
             writer.write(f)
         outputs.append(output_path)
-        print(f"✅ 生成文件: {output_name} ({len(pages)} 页)")
+        print(f"✅ 生成文件: {output_name} ({len(pages)} 页)", flush=True)
+        sys.stdout.flush()
     
-    return outputs 
+    return outputs
