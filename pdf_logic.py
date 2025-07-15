@@ -24,6 +24,7 @@ WAREHOUSE_PREFIXES = {
 # 动态设置Tesseract路径以适配不同环境
 import platform
 import shutil
+import sys
 
 # 动态检测Tesseract路径
 def setup_tesseract():
@@ -52,7 +53,6 @@ def setup_tesseract():
     return None
 
 # 设置Tesseract命令路径
-import sys
 tesseract_path = setup_tesseract()
 if tesseract_path and OCR_AVAILABLE:
     pytesseract.pytesseract.tesseract_cmd = tesseract_path
@@ -166,27 +166,15 @@ def is_sku_match(ocr_sku, excel_sku):
     
     # 7. 特殊处理：OPAC系列的常见OCR错误
     if 'OPAC' in ocr_norm and 'OPAC' in excel_norm:
-        # 提取数字部分和后缀
-        ocr_opac_match = re.search(r'OPAC-?(\d+)([A-Z]*)', ocr_norm)
-        excel_opac_match = re.search(r'OPAC-?(\d+)([A-Z]*)', excel_norm)
-        if ocr_opac_match and excel_opac_match:
-            ocr_num = ocr_opac_match.group(1)
-            excel_num = excel_opac_match.group(1)
-            ocr_suffix = ocr_opac_match.group(2)
-            excel_suffix = excel_opac_match.group(2)
-            
-            # 允许数字的OCR错误: 5↔9, 6↔9, 5↔6
-            num_matches = (
-                (ocr_num == '9' and excel_num in ['5', '6']) or
-                (ocr_num == '5' and excel_num in ['9', '6']) or
-                (ocr_num == '6' and excel_num in ['9', '5']) or
-                (ocr_num == excel_num)  # 数字完全匹配
-            )
-            
-            # 后缀必须匹配（H, B等）
-            suffix_matches = (ocr_suffix == excel_suffix)
-            
-            if num_matches and suffix_matches:
+        # 提取数字部分
+        ocr_opac_num = re.search(r'OPAC-?(\d+)', ocr_norm)
+        excel_opac_num = re.search(r'OPAC-?(\d+)', excel_norm)
+        if ocr_opac_num and excel_opac_num:
+            ocr_num = ocr_opac_num.group(1)
+            excel_num = excel_opac_num.group(1)
+            # 允许5和9的混淆，6和9的混淆等
+            if (ocr_num == '9' and excel_num == '5') or (ocr_num == '5' and excel_num == '9') or \
+               (ocr_num == '6' and excel_num == '9') or (ocr_num == '9' and excel_num == '6'):
                 return True
     
     # 8. TFO1S系列的常见错误
@@ -545,11 +533,9 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             if algin_sku_order:
                 for i, excel_sku in enumerate(algin_sku_order):
                     if is_sku_match(sku_string, excel_sku):
-                        print(f"🔗 SKU匹配: '{sku_string}' → '{excel_sku}' (位置{i})", flush=True)
                         return (0, i, sku_string)
                 
                 # 在Excel中没找到，但是有SKU，放在Excel SKU后面
-                print(f"⚠️  未匹配SKU: '{sku_string}' - 放在列表后面", flush=True)
                 return (1, sku_string)
             else:
                 # 没有Excel文件，使用智能排序
@@ -586,9 +572,10 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     
     for warehouse in processing_order:
         if warehouse == "algin_combined":
-            # 对于ALGIN排序，只处理ALGIN相关的页面
+            # 对于ALGIN排序，处理所有ALGIN相关的页面
             algin_sorted_pages = groups["algin_sorted"]
             algin_unsorted_pages = groups["algin_unscanned"]
+            summary_pages = groups["unscanned_sku_labels"]
             
             # 分离有SKU和无SKU的ALGIN页面
             algin_with_sku = []
@@ -601,8 +588,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 else:
                     algin_with_sku.append(item)
             
-            # 输出所有ALGIN页面（有SKU的排在前面，未扫描的放在后面）
-            all_pages = algin_with_sku + algin_without_sku + algin_unsorted_pages
+            # 输出所有ALGIN页面：排序的SKU + 未扫描的 + 汇总页面
+            all_pages = algin_with_sku + algin_without_sku + algin_unsorted_pages + summary_pages
             
             if not all_pages:
                 print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面", flush=True)
@@ -610,8 +597,6 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 if not all_pages:
                     print(f"❌ 错误: 没有找到任何ALGIN页面！", flush=True)
                     continue
-            
-            print(f"📋 输出页面构成: 有SKU {len(algin_with_sku)} + 无SKU {len(algin_without_sku)} + 未扫描 {len(algin_unsorted_pages)} = 总计 {len(all_pages)} 页", flush=True)
                 
             writer = PdfWriter()
             for item in all_pages:
