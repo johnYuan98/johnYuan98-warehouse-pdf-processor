@@ -636,7 +636,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     for warehouse in ["915", "8090", "60"]:
         groups[warehouse].sort(key=get_warehouse_sort_key)
     
-    # Sort ALGIN labels by Excel SKU order - 优化版本
+    # Sort ALGIN labels by Excel SKU order - 修复版本
     def get_algin_sort_key(item):
         if len(item) >= 2:
             sku_string = item[1] if len(item) > 1 else ""
@@ -651,13 +651,14 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 for i, excel_sku in enumerate(algin_sku_order):
                     if is_sku_match(sku_string, excel_sku):
                         print(f"🎯 SKU匹配成功: {sku_string} -> {excel_sku} (位置{i})")
-                        # 关键修复：使用 (sku_order_index, original_page_num) 作为排序键
-                        # 这样确保：1) 不同SKU按预定义顺序排列 2) 相同SKU按原始页面顺序排列
+                        # 关键修复：只使用SKU在Excel中的位置作为主要排序键
+                        # 这样确保所有页面严格按照Excel中的SKU顺序排列
+                        # 对于同一SKU的多个页面，使用原始页面顺序作为次要排序键
                         return (0, i, original_page_num)
                 
                 # 在Excel中没找到，但是有SKU，放在Excel SKU后面
                 print(f"⚠️  SKU未找到匹配: {sku_string}")
-                return (1, hash(sku_string) % 1000, original_page_num)
+                return (1, 993, original_page_num)  # 使用固定值993确保一致性
             else:
                 # 没有Excel文件，使用智能排序
                 return (0,) + extract_sku_sort_key(sku_string) + (original_page_num,)
@@ -743,8 +744,11 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 
             # 只输出有效的SKU页面
             writer = PdfWriter()
-            for item in algin_with_sku:
+            print(f"🔍 最终输出页面顺序:")
+            for i, item in enumerate(algin_with_sku):
                 page_idx = item[0] - 1  # Convert back to 0-based index for PDF reader
+                sku_string = item[1] if len(item) > 1 else "未知"
+                print(f"   第{i+1}页输出: 原页面{item[0]} -> SKU: {sku_string}")
                 writer.add_page(reader.pages[page_idx])
             
             output_name = "ALGIN_Label_已排序.pdf"
