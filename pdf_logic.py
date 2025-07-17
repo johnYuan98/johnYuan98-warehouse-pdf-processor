@@ -98,7 +98,7 @@ def extract_sku_sort_key(sku_text):
 
 def is_sku_match(ocr_sku, excel_sku):
     """
-    改进的SKU匹配逻辑，处理OCR扫描结果与正确SKU列表的差异
+    大幅增强的SKU匹配逻辑，专门优化OCR识别准确率
     """
     # 标准化处理
     ocr_clean = ocr_sku.upper().strip()
@@ -108,75 +108,129 @@ def is_sku_match(ocr_sku, excel_sku):
     if ocr_clean == excel_clean:
         return True
     
-    # 2. 标准化破折号后匹配
-    def normalize_dashes(sku):
-        return sku.replace('—', '-').replace('_', '-').replace(' ', '')
+    # 2. 标准化处理 - 增强版
+    def normalize_sku(sku):
+        import re
+        # 统一所有破折号和空格
+        sku = sku.replace('—', '-').replace('_', '-').replace('–', '-')
+        # 去除多余空格，但保留必要的分隔符
+        sku = re.sub(r'\s+', '', sku)  # 去除所有空格
+        # 处理常见OCR错误的字符替换
+        replacements = {
+            'TF01S': 'TFO1S',  # 关键修复：OCR常把TFO1S识别为TF01S
+            'TFO15': 'TFO1S',  # S被识别为5
+            'TF015': 'TFO1S',  # 综合错误
+            'OPAC—': 'OPAC-', # 长破折号
+            'OPAC_': 'OPAC-', # 下划线
+        }
+        for wrong, correct in replacements.items():
+            sku = sku.replace(wrong, correct)
+        return sku
     
-    ocr_norm = normalize_dashes(ocr_clean)
-    excel_norm = normalize_dashes(excel_clean)
+    ocr_norm = normalize_sku(ocr_clean)
+    excel_norm = normalize_sku(excel_clean)
     
     if ocr_norm == excel_norm:
         return True
     
-    # 3. 处理OCR常见错误
-    ocr_corrections = {
-        '0': 'O', 'O': '0',  # 数字0和字母O
-        '1': 'I', 'I': '1',  # 数字1和字母I
-        '5': 'S', 'S': '5',  # 数字5和字母S
-        '8': 'B', 'B': '8',  # 数字8和字母B
-        '9': '6', '6': '9',  # 常见的9和6混淆
-        'G': '6', '6': 'G',  # G和6混淆
-    }
+    # 3. 数字/字母常见OCR错误纠正
+    def apply_ocr_corrections(sku):
+        corrections = {
+            '0': 'O', 'O': '0',  # 数字0和字母O互换
+            '1': 'I', 'I': '1',  # 数字1和字母I互换
+            '5': 'S', 'S': '5',  # 数字5和字母S互换
+            '8': 'B', 'B': '8',  # 数字8和字母B互换
+            '6': '9', '9': '6',  # 数字6和9互换
+            'G': '6', '6': 'G',  # 字母G和数字6互换
+            'Q': 'O', 'O': 'Q',  # 字母Q和O互换
+        }
+        result = sku
+        for wrong, correct in corrections.items():
+            result = result.replace(wrong, correct)
+        return result
     
-    # 生成OCR纠错版本
-    ocr_corrected = ocr_norm
-    for wrong, correct in ocr_corrections.items():
-        ocr_corrected = ocr_corrected.replace(wrong, correct)
-    
+    ocr_corrected = apply_ocr_corrections(ocr_norm)
     if ocr_corrected == excel_norm:
         return True
     
-    # 4. 核心部分匹配（去除特殊字符）
-    def extract_core_sku(sku):
-        import re
-        parts = re.findall(r'[A-Z0-9]+', sku)
-        return ''.join(parts)
-    
-    ocr_core = extract_core_sku(ocr_norm)
-    excel_core = extract_core_sku(excel_norm)
-    
-    if ocr_core == excel_core:
+    # 双向纠错：也对Excel进行OCR纠错尝试
+    excel_corrected = apply_ocr_corrections(excel_norm)
+    if ocr_norm == excel_corrected:
         return True
     
-    # 5. 前缀匹配（对于可能被截断的SKU）
-    if len(ocr_norm) >= 8 and len(excel_norm) >= 8:
-        if excel_norm.startswith(ocr_norm) or ocr_norm.startswith(excel_norm):
-            # 确保长度差异合理
-            if abs(len(ocr_norm) - len(excel_norm)) <= 3:
-                return True
-    
-    # 6. 精确包含关系匹配
+    # 4. 智能前缀/后缀匹配（处理截断问题）
+    # OCR可能截断，检查核心部分是否匹配
     if len(ocr_norm) >= 6 and len(excel_norm) >= 6:
-        if ocr_norm in excel_norm or excel_norm in ocr_norm:
-            # 确保不是意外的子串匹配
-            if abs(len(ocr_norm) - len(excel_norm)) <= 2:
+        # 前缀匹配：OCR可能被截断
+        if excel_norm.startswith(ocr_norm) and len(ocr_norm) >= len(excel_norm) * 0.7:
+            return True
+        # 反向：Excel在OCR中被截断
+        if ocr_norm.startswith(excel_norm) and len(excel_norm) >= len(ocr_norm) * 0.7:
+            return True
+    
+    # 5. 核心SKU提取匹配
+    def extract_core_components(sku):
+        import re
+        # 提取主要的字母数字组件
+        parts = re.findall(r'[A-Z0-9]+', sku)
+        return parts
+    
+    ocr_parts = extract_core_components(ocr_norm)
+    excel_parts = extract_core_components(excel_norm)
+    
+    # 检查主要组件是否匹配（允许部分缺失）
+    if len(ocr_parts) >= 2 and len(excel_parts) >= 2:
+        # 至少前两个主要组件匹配
+        if len(ocr_parts) >= 2 and len(excel_parts) >= 2:
+            if (ocr_parts[0] == excel_parts[0] and ocr_parts[1] == excel_parts[1]):
                 return True
     
-    # 7. 特殊处理：OPAC系列的常见OCR错误
+    # 6. 特殊SKU系列优化匹配
+    
+    # OPAC系列特殊处理
     if 'OPAC' in ocr_norm and 'OPAC' in excel_norm:
-        # 提取数字部分
-        ocr_opac_num = re.search(r'OPAC-?(\d+)', ocr_norm)
-        excel_opac_num = re.search(r'OPAC-?(\d+)', excel_norm)
-        if ocr_opac_num and excel_opac_num:
-            ocr_num = ocr_opac_num.group(1)
-            excel_num = excel_opac_num.group(1)
-            # 允许5和9的混淆，6和9的混淆等
-            if (ocr_num == '9' and excel_num == '5') or (ocr_num == '5' and excel_num == '9') or \
-               (ocr_num == '6' and excel_num == '9') or (ocr_num == '9' and excel_num == '6'):
+        import re
+        ocr_num = re.search(r'OPAC-?(\d+)', ocr_norm)
+        excel_num = re.search(r'OPAC-?(\d+)', excel_norm)
+        if ocr_num and excel_num:
+            ocr_n = ocr_num.group(1)
+            excel_n = excel_num.group(1)
+            # 处理5/6/9的常见混淆
+            number_equivalents = {'5': '9', '9': '5', '6': '9', '9': '6'}
+            if ocr_n == excel_n or number_equivalents.get(ocr_n) == excel_n:
                 return True
     
-    # 8. TFO1S系列的常见错误
-    if ('TFO1S' in ocr_norm or 'TF01S' in ocr_norm) and 'TFO1S' in excel_norm:
+    # TFO1S系列特殊处理
+    if ('TFO1S' in ocr_norm or 'TF01S' in ocr_norm or 'TFO15' in ocr_norm) and 'TFO1S' in excel_norm:
+        return True
+    
+    # TL系列特殊处理
+    if 'TL' in ocr_norm and 'TL' in excel_norm:
+        # 提取W后面的部分
+        import re
+        ocr_w_part = re.search(r'TL-?W(\w+)', ocr_norm)
+        excel_w_part = re.search(r'TL-?W(\w+)', excel_norm)
+        if ocr_w_part and excel_w_part:
+            if ocr_w_part.group(1)[:3] == excel_w_part.group(1)[:3]:  # 前3个字符匹配
+                return True
+    
+    # 7. 容错匹配：相似度计算
+    def calculate_similarity(s1, s2):
+        # 简单的编辑距离相似度
+        if len(s1) == 0 or len(s2) == 0:
+            return 0
+        
+        # 计算相同字符的比例
+        min_len = min(len(s1), len(s2))
+        max_len = max(len(s1), len(s2))
+        
+        same_chars = sum(1 for i in range(min_len) if s1[i] == s2[i])
+        similarity = same_chars / max_len
+        return similarity
+    
+    # 如果相似度很高（85%以上），认为匹配
+    similarity = calculate_similarity(ocr_norm, excel_norm)
+    if similarity >= 0.85 and len(ocr_norm) >= 6 and len(excel_norm) >= 6:
         return True
     
     return False
@@ -413,9 +467,9 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 is_algin_label = not is_definitely_not_algin
                 
                 if is_algin_label:
-                    # 使用智能SKU识别和排序逻辑 - 扩展模式匹配
+                    # 使用智能SKU识别和排序逻辑 - 大幅增强模式匹配
                     algin_sku_patterns = [
-                        # 标准ALGIN SKU格式
+                        # 标准完整格式
                         r'\b(\d{3})-([A-Z]{2,4})-([A-Z0-9]+)\b',                    # 048-OPAC-5, 048-TL-W6KWD
                         r'\b(\d{3})-([A-Z]{2,4})—(\d+)-?([A-Z]*)\b',                # 048-OPAC—5, 014-HG—17061-B  
                         r'\b([A-Z0-9]{3,5})-([A-Z]{2})\b',                          # TFO1S-BK
@@ -432,6 +486,15 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                         
                         # 060系列格式
                         r'\b(060)-([A-Z]{3})-(\d{2,3}[A-Z]*)-([A-Z]{2,3})\b',       # 060-ROT-11L-WH, 060-ROT-15V2-DG
+                        
+                        # 处理截断和空格问题的模式
+                        r'(\d{3})\s*-\s*([A-Z]{2,4})\s*[-—]\s*([A-Z0-9]+)',        # 带空格的格式: "048 -TL-W..."
+                        r'(\d{3})\s*-\s*([A-Z]{2,4})\s*[-—]\s*([A-Z0-9]*)',        # 可能截断的格式
+                        r'([A-Z0-9]{3,5})\s*[-—]\s*([A-Z]{2})',                     # TF01S —BK 格式
+                        
+                        # 非常宽松的模式（处理严重OCR错误）
+                        r'(\d{3})\s*[-—]?\s*([A-Z]{2,4})',                          # 最基本的数字-字母格式
+                        r'([A-Z0-9]{4,6})\s*[-—]\s*([A-Z]{1,3})',                   # 字母数字-字母格式
                         
                         # 通用灵活格式（最后匹配）
                         r'\b(\d{3})-([A-Z]{2,4})-([A-Z0-9-]+)\b',                   # 通用数字-字母-字母数字格式
@@ -462,17 +525,33 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                     re.search(r'\d', potential_sku)):
                                     found_skus.append(potential_sku)
                     
-                    # 选择最佳SKU
+                    # 选择最佳SKU - 增强匹配逻辑
                     if found_skus:
-                        def sku_priority(sku):
-                            has_separator = '-' in sku or '—' in sku
-                            length = len(sku)
-                            return (not has_separator, -length)
+                        # 首先尝试与Excel SKU列表精确匹配
+                        matched_sku = None
+                        best_match_score = 0
                         
-                        found_skus.sort(key=sku_priority)
-                        best_sku = found_skus[0]
+                        for potential_sku in found_skus:
+                            for excel_sku in algin_sku_order:
+                                if is_sku_match(potential_sku, excel_sku):
+                                    matched_sku = excel_sku  # 使用Excel中的标准格式
+                                    best_match_score = 1.0
+                                    break
+                            if matched_sku:
+                                break
                         
-                        groups["algin_sorted"].append((idx, best_sku, text[:200]))
+                        # 如果没有精确匹配，使用最佳候选SKU
+                        if not matched_sku:
+                            def sku_priority(sku):
+                                has_separator = '-' in sku or '—' in sku
+                                length = len(sku)
+                                # 优先选择带分隔符且较长的SKU
+                                return (not has_separator, -length)
+                            
+                            found_skus.sort(key=sku_priority)
+                            matched_sku = found_skus[0]
+                        
+                        groups["algin_sorted"].append((idx, matched_sku, text[:200]))
                         sku_found = True
                     
                     if not sku_found:
