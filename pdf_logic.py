@@ -708,12 +708,28 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     if mode == "algin":
         groups["algin_sorted"].sort(key=get_algin_sort_key)
         print(f"\n📋 ALGIN排序结果预览:")
-        for i, item in enumerate(groups["algin_sorted"][:10]):  # 显示前10个
+        
+        # 统计每种SKU的数量
+        sku_counts = {}
+        for item in groups["algin_sorted"]:
+            sku = item[1] if len(item) > 1 else "未知"
+            sku_counts[sku] = sku_counts.get(sku, 0) + 1
+        
+        # 显示SKU统计
+        print(f"📊 SKU分布统计:")
+        for sku, count in sorted(sku_counts.items()):
+            excel_index = algin_sku_order.index(sku) if sku in algin_sku_order else -1
+            print(f"   {sku}: {count}页 (Excel第{excel_index+1}位)")
+        
+        # 显示前15个排序结果
+        print(f"\n📋 排序结果前15个:")
+        for i, item in enumerate(groups["algin_sorted"][:15]):
             sku = item[1] if len(item) > 1 else "未知"
             page_num = item[0] + 1
-            print(f"   {i+1:2d}. 页面{page_num:3d} → {sku}")
-        if len(groups["algin_sorted"]) > 10:
-            print(f"   ... 还有 {len(groups['algin_sorted']) - 10} 个SKU")
+            excel_index = algin_sku_order.index(sku) if sku in algin_sku_order else -1
+            print(f"   {i+1:2d}. 页面{page_num:3d} → {sku} (Excel第{excel_index+1}位)")
+        if len(groups["algin_sorted"]) > 15:
+            print(f"   ... 还有 {len(groups['algin_sorted']) - 15} 个SKU")
     
     # 显示处理统计
     print(f"\n📊 处理完成统计:")
