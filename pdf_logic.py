@@ -566,39 +566,76 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                             if matched_sku:
                                 break
                         
-                        # 如果没有精确匹配，使用智能优先级选择
-                        if not matched_sku:
-                            def sku_priority(sku):
-                                # 优先级评分系统
-                                score = 0
+                        # 如果没有精确匹配，尝试部分匹配和智能推断
+                        if not matched_sku and found_skus:
+                            # 尝试部分匹配Excel SKU
+                            for potential_sku in found_skus:
+                                best_partial_match = None
+                                best_match_score = 0
                                 
-                                # 1. 优先选择包含已知SKU模式的
-                                if re.match(r'048-(OPAC|TL)-', sku):
-                                    score += 100
-                                elif re.match(r'TFO1S', sku):
-                                    score += 100
-                                elif re.match(r'060-ROT', sku):
-                                    score += 100
-                                elif re.match(r'014-HG', sku):
-                                    score += 100
-                                elif re.match(r'050-(HA|LMT)', sku):
-                                    score += 100
+                                for excel_sku in algin_sku_order:
+                                    # 计算相似度分数
+                                    similarity = 0
+                                    
+                                    # 前缀匹配（最重要）
+                                    if potential_sku.startswith('048') and excel_sku.startswith('048'):
+                                        similarity += 50
+                                        if 'OPAC' in potential_sku and 'OPAC' in excel_sku:
+                                            similarity += 30
+                                        elif 'TL' in potential_sku and 'TL' in excel_sku:
+                                            similarity += 30
+                                    elif potential_sku.startswith('TF') and excel_sku.startswith('TF'):
+                                        similarity += 50
+                                    elif potential_sku.startswith('060') and excel_sku.startswith('060'):
+                                        similarity += 50
+                                    elif potential_sku.startswith('014') and excel_sku.startswith('014'):
+                                        similarity += 50
+                                    elif potential_sku.startswith('050') and excel_sku.startswith('050'):
+                                        similarity += 50
+                                    
+                                    # 关键词匹配
+                                    if 'OPAC' in potential_sku and 'OPAC' in excel_sku:
+                                        similarity += 20
+                                    if 'ROT' in potential_sku and 'ROT' in excel_sku:
+                                        similarity += 20
+                                    if 'HG' in potential_sku and 'HG' in excel_sku:
+                                        similarity += 20
+                                    
+                                    if similarity > best_match_score:
+                                        best_match_score = similarity
+                                        best_partial_match = excel_sku
                                 
-                                # 2. 长度奖励（更完整的SKU）
-                                score += len(sku)
-                                
-                                # 3. 分隔符奖励
-                                if '-' in sku or '—' in sku:
-                                    score += 10
-                                
-                                # 4. 惩罚明显错误的模式
-                                if re.search(r'\d{3}-[A-Z]{2,3}$', sku) and len(sku) <= 7:
-                                    score -= 50  # 可能是时间戳
-                                
-                                return -score  # 负号因为sort是升序
+                                if best_partial_match and best_match_score >= 50:
+                                    matched_sku = best_partial_match
+                                    break
                             
-                            found_skus.sort(key=sku_priority)
-                            matched_sku = found_skus[0]
+                            # 如果仍然没有匹配，选择最可能的SKU
+                            if not matched_sku:
+                                def sku_priority(sku):
+                                    score = 0
+                                    # 优先选择包含已知SKU模式的
+                                    if re.match(r'048-(OPAC|TL)', sku):
+                                        score += 100
+                                    elif re.match(r'TFO1S', sku):
+                                        score += 100
+                                    elif re.match(r'060-ROT', sku):
+                                        score += 100
+                                    elif re.match(r'014-HG', sku):
+                                        score += 100
+                                    elif re.match(r'050-(HA|LMT)', sku):
+                                        score += 100
+                                    
+                                    # 长度奖励
+                                    score += len(sku)
+                                    
+                                    # 分隔符奖励
+                                    if '-' in sku or '—' in sku:
+                                        score += 10
+                                    
+                                    return -score
+                                
+                                found_skus.sort(key=sku_priority)
+                                matched_sku = found_skus[0]
                         
                         groups["algin_sorted"].append((idx, matched_sku, text[:200]))
                         sku_found = True
@@ -650,9 +687,14 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             
             # 在Excel SKU列表中查找位置
             if algin_sku_order:
+                # 首先尝试精确匹配（对于已经匹配过的SKU）
+                if sku_string in algin_sku_order:
+                    return (0, algin_sku_order.index(sku_string))
+                
+                # 如果不是精确匹配，再尝试模糊匹配
                 for i, excel_sku in enumerate(algin_sku_order):
                     if is_sku_match(sku_string, excel_sku):
-                        return (0, i, sku_string)
+                        return (0, i)
                 
                 # 在Excel中没找到，但是有SKU，放在Excel SKU后面
                 return (1, sku_string)
@@ -733,6 +775,16 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             outputs.append(output_path)
             print(f"✅ 生成文件: {output_name} ({len(all_pages)} 页)")
             print(f"   其中: {len(algin_with_sku)} 个SKU标签 + {len(algin_summary_pages)} 个汇总页面")
+            
+            # 验证数字：总页数应该等于各部分之和
+            expected_total = len(algin_with_sku) + len(algin_summary_pages)
+            if len(all_pages) != expected_total:
+                print(f"⚠️  页面计数不一致: 输出{len(all_pages)}页 vs 预期{expected_total}页")
+            
+            # 检查是否有未扫描页面被忽略
+            total_algin_pages = len(groups["algin_sorted"]) + len(groups["algin_unscanned"]) + len(groups["algin_summary"])
+            if total_algin_pages != len(all_pages):
+                print(f"📊 未包含的页面: {total_algin_pages - len(all_pages)} 页 (可能是未扫描的标签页面)")
             continue
             
         pages = groups[warehouse]
