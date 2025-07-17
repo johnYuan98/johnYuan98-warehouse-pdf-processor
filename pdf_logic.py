@@ -638,6 +638,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                 matched_sku = found_skus[0]
                         
                         groups["algin_sorted"].append((idx, matched_sku, text[:200]))
+                        print(f"🔗 页面{idx+1} 匹配成功 → Excel='{matched_sku}'")
                         sku_found = True
                     
                     if not sku_found:
@@ -706,6 +707,13 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     
     if mode == "algin":
         groups["algin_sorted"].sort(key=get_algin_sort_key)
+        print(f"\n📋 ALGIN排序结果预览:")
+        for i, item in enumerate(groups["algin_sorted"][:10]):  # 显示前10个
+            sku = item[1] if len(item) > 1 else "未知"
+            page_num = item[0] + 1
+            print(f"   {i+1:2d}. 页面{page_num:3d} → {sku}")
+        if len(groups["algin_sorted"]) > 10:
+            print(f"   ... 还有 {len(groups['algin_sorted']) - 10} 个SKU")
     
     # 显示处理统计
     print(f"\n📊 处理完成统计:")
@@ -750,11 +758,12 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                     algin_with_sku.append(item)
             
             # 按排序顺序组合：有SKU的ALGIN页面 + 汇总页面
-            all_pages = algin_with_sku
+            all_pages = algin_with_sku.copy()  # 使用copy确保不影响原始列表
             
             # 将汇总页面添加到最后（按原始页面顺序）
             algin_summary_pages.sort(key=lambda x: x[0])  # 按页面索引排序
-            all_pages.extend([(item[0], "汇总页面", item[2]) for item in algin_summary_pages])
+            summary_pages_formatted = [(item[0], "汇总页面", item[2]) for item in algin_summary_pages]
+            all_pages.extend(summary_pages_formatted)
             
             if not all_pages:
                 print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面")
