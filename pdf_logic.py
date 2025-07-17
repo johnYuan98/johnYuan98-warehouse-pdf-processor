@@ -516,13 +516,17 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                                 else:
                                     potential_sku = match
                                 
-                                # 更严格的SKU验证
+                                # 更严格的SKU验证 - 增强版
                                 if (len(potential_sku) >= 5 and 
                                     not re.match(r'^\d{4}$', potential_sku) and
                                     not potential_sku.startswith('AGD') and
                                     # 确保包含至少一个字母和一个数字
                                     re.search(r'[A-Z]', potential_sku) and
-                                    re.search(r'\d', potential_sku)):
+                                    re.search(r'\d', potential_sku) and
+                                    # 排除明显的错误模式
+                                    not re.match(r'^\d{3}-[A-Z]{2,4}$', potential_sku) and  # 排除时间戳格式
+                                    not potential_sku.startswith(('101-', '102-', '103-', '104-', '105-')) and  # 排除页面编号
+                                    not re.search(r'(AOI|AATT|AI0)', potential_sku)):  # 排除时间标记
                                     found_skus.append(potential_sku)
                     
                     # 选择最佳SKU - 增强匹配逻辑
@@ -540,13 +544,36 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                             if matched_sku:
                                 break
                         
-                        # 如果没有精确匹配，使用最佳候选SKU
+                        # 如果没有精确匹配，使用智能优先级选择
                         if not matched_sku:
                             def sku_priority(sku):
-                                has_separator = '-' in sku or '—' in sku
-                                length = len(sku)
-                                # 优先选择带分隔符且较长的SKU
-                                return (not has_separator, -length)
+                                # 优先级评分系统
+                                score = 0
+                                
+                                # 1. 优先选择包含已知SKU模式的
+                                if re.match(r'048-(OPAC|TL)-', sku):
+                                    score += 100
+                                elif re.match(r'TFO1S', sku):
+                                    score += 100
+                                elif re.match(r'060-ROT', sku):
+                                    score += 100
+                                elif re.match(r'014-HG', sku):
+                                    score += 100
+                                elif re.match(r'050-(HA|LMT)', sku):
+                                    score += 100
+                                
+                                # 2. 长度奖励（更完整的SKU）
+                                score += len(sku)
+                                
+                                # 3. 分隔符奖励
+                                if '-' in sku or '—' in sku:
+                                    score += 10
+                                
+                                # 4. 惩罚明显错误的模式
+                                if re.search(r'\d{3}-[A-Z]{2,3}$', sku) and len(sku) <= 7:
+                                    score -= 50  # 可能是时间戳
+                                
+                                return -score  # 负号因为sort是升序
                             
                             found_skus.sort(key=sku_priority)
                             matched_sku = found_skus[0]
