@@ -762,16 +762,26 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             algin_unsorted_pages = groups["algin_unscanned"]
             algin_summary_pages = groups["algin_summary"]
             
-            # 分离有SKU和无SKU的ALGIN页面
+            # 分离有SKU和无SKU的ALGIN页面（保持排序顺序）
             algin_with_sku = []
             algin_without_sku = []
             
-            for item in algin_sorted_pages:
+            print(f"\n🔍 最终输出页面顺序验证:")
+            for i, item in enumerate(algin_sorted_pages):
                 sku_string = item[1] if len(item) > 1 else ""
+                page_idx = item[0]
                 if "[ALGIN Label" in str(sku_string):
                     algin_without_sku.append(item)
+                    print(f"   跳过页面{page_idx+1}: {sku_string} (未扫描SKU)")
                 else:
                     algin_with_sku.append(item)
+                    if i < 20:  # 只显示前20个
+                        print(f"   输出第{len(algin_with_sku):2d}位: 页面{page_idx+1:3d} → {sku_string}")
+            
+            if len(algin_with_sku) > 20:
+                print(f"   ... 还有 {len(algin_with_sku) - 20} 个页面按顺序输出")
+            
+            print(f"\n📋 最终输出确认: {len(algin_with_sku)} 个SKU页面 + {len(algin_summary_pages)} 个汇总页面")
             
             # 按排序顺序组合：有SKU的ALGIN页面 + 汇总页面
             all_pages = algin_with_sku.copy()  # 使用copy确保不影响原始列表
