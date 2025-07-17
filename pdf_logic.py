@@ -263,29 +263,40 @@ def load_algin_sku_order(excel_path="uploads/ALGIN.xlsx"):
     return correct_order
 
 def is_unscanned_sku_label(text):
-    """判断是否为'未能扫出SKU的label'页面 - 更严格的判断逻辑"""
+    """判断是否为'未能扫出SKU的label'页面 - 增强汇总页面检测"""
     if not text or not text.strip():
         return False
         
     text_upper = text.upper()
     
-    # 1. 必须包含ALGIN相关标识
+    # 1. 首先检查是否为汇总页面（最重要的判断）
+    summary_patterns = [
+        r'TOTAL\s+\d+\s+LABELS',     # "Total XX Labels"
+        r'UPS:\s*\d+\s+LABELS',      # "UPS: XX Labels"
+        r'SINGLE.*LABEL',            # "Single...Label"
+        r'TOTAL.*\d+.*LABEL',        # 通用的Total...Label格式
+    ]
+    
+    # 如果包含汇总模式，这就是汇总页面
+    for pattern in summary_patterns:
+        if re.search(pattern, text_upper):
+            print(f"🔍 检测到汇总页面模式: {pattern}")
+            return True
+    
+    # 2. 必须包含ALGIN相关标识
     has_algin = bool(re.search(r'(ALN|ALGIN|ALIGN)', text_upper))
     if not has_algin:
         return False
     
-    # 2. 必须包含UPS信息（特殊格式的UPS标签编号）
+    # 3. 检查是否包含UPS信息但没有具体SKU（老的逻辑）
     ups_pattern = r'UPS\d*L'  # UPS后跟数字和L，如UPS1L, UPS128L等
     ups_matches = re.findall(ups_pattern, text_upper)
-    if len(ups_matches) < 1:  # 必须有至少1个特殊格式的UPS标签编号
-        return False
+    has_ups = len(ups_matches) >= 1
     
-    # 3. 包含FSO标识（表示是总结页面）
+    # 4. 检查是否包含FSO标识（表示是总结页面）
     has_fso = bool(re.search(r'FSO', text_upper))
-    if not has_fso:
-        return False
     
-    # 4. 不应该包含明确的产品SKU
+    # 5. 检查是否不包含明确的产品SKU
     detailed_sku_patterns = [
         r'\b\d{3}-[A-Z]{2,4}-[A-Z0-9]+\b',    # 048-OPAC-5, 048-TL-W6KWD等
         r'\b[A-Z0-9]{4,6}-[A-Z]{2}\b',        # TFO1S-BK等
@@ -293,11 +304,22 @@ def is_unscanned_sku_label(text):
         r'\b[A-Z0-9]{3,5}—[A-Z]{2}\b',       # TFO1S—BK
     ]
     has_detailed_sku = any(re.search(pattern, text_upper) for pattern in detailed_sku_patterns)
-    if has_detailed_sku:
-        return False
     
-    # 5. 必须同时满足以上条件才是总结页面
-    return True
+    # 6. 汇总页面的多重判断逻辑
+    if has_algin:
+        # 情况1: 有UPS信息、FSO标识但没有具体SKU（原逻辑）
+        if has_ups and has_fso and not has_detailed_sku:
+            return True
+        
+        # 情况2: 包含"总计"或"统计"信息的页面
+        if re.search(r'(TOTAL|UPS:.*\d+|统计|总计)', text_upper):
+            return True
+        
+        # 情况3: 页面内容很短且只包含汇总信息
+        if len(text.strip()) < 200 and re.search(r'LABELS?', text_upper):
+            return True
+    
+    return False
 
 def extract_sort_key_for_unscanned(text):
     """为未能扫描出来SKU的label提取排序键"""
@@ -353,7 +375,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     # 根据模式决定是否加载ALGIN SKU顺序
     if mode == "algin":
         algin_sku_order = load_algin_sku_order()
-        groups = {"915": [], "8090": [], "60": [], "algin_sorted": [], "algin_unscanned": [], "unscanned_sku_labels": [], "unknown": [], "blank": []}
+        groups = {"915": [], "8090": [], "60": [], "algin_sorted": [], "algin_unscanned": [], "algin_summary": [], "unknown": [], "blank": []}
     else:
         algin_sku_order = None
         groups = {"915": [], "8090": [], "60": [], "unknown": [], "blank": []}
@@ -422,7 +444,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                             # 检查是否是未能扫出SKU的label
                             if is_unscanned_sku_label(ocr_text):
                                 sort_key = extract_sort_key_for_unscanned(ocr_text)
-                                groups["unscanned_sku_labels"].append((idx, sort_key, ocr_text[:100]))
+                                groups["algin_summary"].append((idx, sort_key, ocr_text[:100]))
                                 continue
                             # 假设这是ALGIN标签但无法识别
                             groups["algin_unscanned"].append((idx, "[ALGIN Label - OCR失败]"))
@@ -437,10 +459,10 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                     groups["algin_unscanned"].append((idx, "[ALGIN Label - OCR不可用]"))
                     continue
             
-            # First, check if this is an "未能扫出SKU的label" page (for ALGIN mode)
+            # First, check if this is a summary page (for ALGIN mode)
             if mode == "algin" and is_unscanned_sku_label(text):
                 sort_key = extract_sort_key_for_unscanned(text)
-                groups["unscanned_sku_labels"].append((idx, sort_key, text[:100]))
+                groups["algin_summary"].append((idx, sort_key, text[:100]))
                 continue
             
             # 根据模式决定处理逻辑
@@ -649,6 +671,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     if mode == "algin":
         print(f"   ALGIN已排序: {len(groups['algin_sorted'])}")
         print(f"   ALGIN未扫描: {len(groups['algin_unscanned'])}")
+        print(f"   ALGIN汇总页: {len(groups['algin_summary'])}")
     print(f"   915仓库: {len(groups['915'])}")
     print(f"   8090仓库: {len(groups['8090'])}")
     print(f"   60仓库: {len(groups['60'])}")
@@ -668,9 +691,10 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
     
     for warehouse in processing_order:
         if warehouse == "algin_combined":
-            # 对于ALGIN排序，只处理ALGIN相关的页面
+            # 对于ALGIN排序，处理所有ALGIN相关的页面
             algin_sorted_pages = groups["algin_sorted"]
             algin_unsorted_pages = groups["algin_unscanned"]
+            algin_summary_pages = groups["algin_summary"]
             
             # 分离有SKU和无SKU的ALGIN页面
             algin_with_sku = []
@@ -683,8 +707,12 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 else:
                     algin_with_sku.append(item)
             
-            # 只输出有SKU且排序好的ALGIN页面
+            # 按排序顺序组合：有SKU的ALGIN页面 + 汇总页面
             all_pages = algin_with_sku
+            
+            # 将汇总页面添加到最后（按原始页面顺序）
+            algin_summary_pages.sort(key=lambda x: x[0])  # 按页面索引排序
+            all_pages.extend([(item[0], "汇总页面", item[2]) for item in algin_summary_pages])
             
             if not all_pages:
                 print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面")
@@ -704,6 +732,7 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 writer.write(f)
             outputs.append(output_path)
             print(f"✅ 生成文件: {output_name} ({len(all_pages)} 页)")
+            print(f"   其中: {len(algin_with_sku)} 个SKU标签 + {len(algin_summary_pages)} 个汇总页面")
             continue
             
         pages = groups[warehouse]
