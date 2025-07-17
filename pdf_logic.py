@@ -315,8 +315,8 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
         for idx, page in enumerate(plumber.pages):
             processed_pages += 1
             
-            # 每处理10页显示一次进度
-            if processed_pages % 10 == 0:
+            # 每处理5页显示一次进度（更频繁的反馈）
+            if processed_pages % 5 == 0:
                 print(f"📊 处理进度: {processed_pages}/{total_pages} ({processed_pages/total_pages*100:.1f}%)")
             
             text = page.extract_text() or ""
@@ -343,24 +343,22 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 ocr_text = ""
                 if OCR_AVAILABLE:
                     try:
-                        # Convert page to image and run OCR with multiple configurations
-                        page_image = page.to_image(resolution=150)  # 提高分辨率
-                        # 尝试多个OCR配置
+                        # Convert page to image and run OCR with optimized resolution
+                        page_image = page.to_image(resolution=120)  # 平衡质量和速度
+                        # 优化的OCR配置（减少尝试次数）
                         ocr_configs = [
-                            '--psm 6 --oem 1 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-— ',
-                            '--psm 4 --oem 1',  # 单列文本
-                            '--psm 3 --oem 1',  # 自动检测
-                            '--psm 1 --oem 1',  # 自动方向和脚本检测
+                            '--psm 6 --oem 1',  # 最快的配置，优先使用
+                            '--psm 4 --oem 1',  # 备用配置
                         ]
                         for config in ocr_configs:
                             try:
                                 ocr_text = pytesseract.image_to_string(page_image.original, config=config)
                                 if ocr_text.strip():
                                     text = ocr_text
-                                    print(f"🔍 页面{idx+1} OCR成功(配置{config[:10]}): {text[:50]}...")
+                                    print(f"🔍 页面{idx+1} OCR成功: {text[:50]}...")
                                     break
                             except Exception as ocr_e:
-                                print(f"❌ 页面{idx+1} OCR配置失败: {ocr_e}")
+                                print(f"❌ 页面{idx+1} OCR失败: {str(ocr_e)[:50]}")
                                 continue
                         if text.strip():
                             # OCR成功，继续处理
