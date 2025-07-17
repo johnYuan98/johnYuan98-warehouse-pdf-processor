@@ -781,15 +781,10 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
             if len(algin_with_sku) > 20:
                 print(f"   ... 还有 {len(algin_with_sku) - 20} 个页面按顺序输出")
             
-            print(f"\n📋 最终输出确认: {len(algin_with_sku)} 个SKU页面 + {len(algin_summary_pages)} 个汇总页面")
+            print(f"\n📋 最终输出确认: {len(algin_with_sku)} 个SKU页面 (汇总页面已跳过: {len(algin_summary_pages)} 页)")
             
-            # 按排序顺序组合：有SKU的ALGIN页面 + 汇总页面
+            # ALGIN排序输出：只包含有SKU的页面，不包含汇总页面
             all_pages = algin_with_sku.copy()  # 使用copy确保不影响原始列表
-            
-            # 将汇总页面添加到最后（按原始页面顺序）
-            algin_summary_pages.sort(key=lambda x: x[0])  # 按页面索引排序
-            summary_pages_formatted = [(item[0], "汇总页面", item[2]) for item in algin_summary_pages]
-            all_pages.extend(summary_pages_formatted)
             
             if not all_pages:
                 print(f"⚠️  警告: 没有找到有SKU的页面，将输出所有ALGIN页面")
@@ -809,12 +804,11 @@ def process_pdf(input_pdf, output_dir, mode="warehouse"):
                 writer.write(f)
             outputs.append(output_path)
             print(f"✅ 生成文件: {output_name} ({len(all_pages)} 页)")
-            print(f"   其中: {len(algin_with_sku)} 个SKU标签 + {len(algin_summary_pages)} 个汇总页面")
+            print(f"   包含: {len(algin_with_sku)} 个SKU标签 (已跳过 {len(algin_summary_pages)} 个汇总页面)")
             
-            # 验证数字：总页数应该等于各部分之和
-            expected_total = len(algin_with_sku) + len(algin_summary_pages)
-            if len(all_pages) != expected_total:
-                print(f"⚠️  页面计数不一致: 输出{len(all_pages)}页 vs 预期{expected_total}页")
+            # 验证数字：输出页数应该等于SKU页面数
+            if len(all_pages) != len(algin_with_sku):
+                print(f"⚠️  页面计数不一致: 输出{len(all_pages)}页 vs 预期{len(algin_with_sku)}页")
             
             # 检查是否有未扫描页面被忽略
             total_algin_pages = len(groups["algin_sorted"]) + len(groups["algin_unscanned"]) + len(groups["algin_summary"])
